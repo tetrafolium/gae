@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
 	"github.com/luci/gkvlite"
 	. "github.com/smartystreets/goconvey/convey"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 )
 
 var fakeKey = key("parentKind", "sid", "knd", 10)

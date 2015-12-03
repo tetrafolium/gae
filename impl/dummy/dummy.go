@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/info"
-	"github.com/luci/gae/service/memcache"
-	"github.com/luci/gae/service/taskqueue"
+	"github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/info"
+	"github.com/tetrafolium/gae/service/memcache"
+	"github.com/tetrafolium/gae/service/taskqueue"
 	"golang.org/x/net/context"
 )
 

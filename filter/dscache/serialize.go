@@ -9,8 +9,8 @@ import (
 	"compress/zlib"
 	"io/ioutil"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 )
 
 func encodeItemValue(pm ds.PropertyMap) []byte {

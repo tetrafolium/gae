@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luci/gae/service/blobstore"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tetrafolium/gae/service/blobstore"
 )
 
 var (

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/luci/gae/impl/dummy"
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/impl/dummy"
+	"github.com/tetrafolium/gae/service/info"
 	"golang.org/x/net/context"
 )
 

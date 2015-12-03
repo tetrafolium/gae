@@ -10,9 +10,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
 	"github.com/luci/luci-go/common/errors"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 	"golang.org/x/net/context"
 )
 

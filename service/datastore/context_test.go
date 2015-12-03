@@ -7,8 +7,8 @@ package datastore
 import (
 	"testing"
 
-	"github.com/luci/gae/service/info"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tetrafolium/gae/service/info"
 	"golang.org/x/net/context"
 )
 

@@ -11,10 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/luci/gae/service/blobstore"
-	ds "github.com/luci/gae/service/datastore"
 	"github.com/luci/luci-go/common/cmpbin"
 	"github.com/luci/luci-go/common/stringset"
+	"github.com/tetrafolium/gae/service/blobstore"
+	ds "github.com/tetrafolium/gae/service/datastore"
 )
 
 // MaxIndexColumns is the maximum number of sort columns (e.g. sort orders) that

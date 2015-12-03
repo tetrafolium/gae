@@ -7,7 +7,7 @@ package prod
 import (
 	"net/http"
 
-	uf "github.com/luci/gae/service/urlfetch"
+	uf "github.com/tetrafolium/gae/service/urlfetch"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/urlfetch"
 )

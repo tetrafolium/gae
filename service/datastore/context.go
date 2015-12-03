@@ -5,7 +5,7 @@
 package datastore
 
 import (
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/service/info"
 	"golang.org/x/net/context"
 )
 

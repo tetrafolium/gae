@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/luci/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore"
 	"golang.org/x/net/context"
 )
 

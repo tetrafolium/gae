@@ -7,10 +7,10 @@ package dscache
 import (
 	"bytes"
 
-	ds "github.com/luci/gae/service/datastore"
-	mc "github.com/luci/gae/service/memcache"
 	"github.com/luci/luci-go/common/errors"
 	"github.com/luci/luci-go/common/logging"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	mc "github.com/tetrafolium/gae/service/memcache"
 	"golang.org/x/net/context"
 )
 

@@ -7,11 +7,11 @@ package dummy
 import (
 	"testing"
 
-	dsS "github.com/luci/gae/service/datastore"
-	infoS "github.com/luci/gae/service/info"
-	mcS "github.com/luci/gae/service/memcache"
-	tqS "github.com/luci/gae/service/taskqueue"
 	. "github.com/smartystreets/goconvey/convey"
+	dsS "github.com/tetrafolium/gae/service/datastore"
+	infoS "github.com/tetrafolium/gae/service/info"
+	mcS "github.com/tetrafolium/gae/service/memcache"
+	tqS "github.com/tetrafolium/gae/service/taskqueue"
 	"golang.org/x/net/context"
 )
 

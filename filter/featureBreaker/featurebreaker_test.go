@@ -7,10 +7,10 @@ package featureBreaker
 import (
 	"testing"
 
-	"github.com/luci/gae/impl/memory"
-	"github.com/luci/gae/service/datastore"
 	"github.com/luci/luci-go/common/errors"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tetrafolium/gae/impl/memory"
+	"github.com/tetrafolium/gae/service/datastore"
 	"golang.org/x/net/context"
 )
 

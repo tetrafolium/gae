@@ -11,9 +11,9 @@ import (
 
 	"golang.org/x/net/context"
 
-	mc "github.com/luci/gae/service/memcache"
 	"github.com/luci/luci-go/common/clock"
 	"github.com/luci/luci-go/common/errors"
+	mc "github.com/tetrafolium/gae/service/memcache"
 )
 
 type mcItem struct {

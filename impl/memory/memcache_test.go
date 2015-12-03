@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	mcS "github.com/luci/gae/service/memcache"
 	"github.com/luci/luci-go/common/clock/testclock"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
+	mcS "github.com/tetrafolium/gae/service/memcache"
 	"golang.org/x/net/context"
 )
 

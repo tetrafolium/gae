@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	ds "github.com/luci/gae/service/datastore"
-	tq "github.com/luci/gae/service/taskqueue"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	tq "github.com/tetrafolium/gae/service/taskqueue"
 	"github.com/luci/luci-go/common/clock"
 	"github.com/luci/luci-go/common/stringset"
 )

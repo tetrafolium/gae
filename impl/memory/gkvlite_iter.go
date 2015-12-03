@@ -8,8 +8,8 @@ import (
 	"bytes"
 	"sync"
 
-	"github.com/luci/gae/service/datastore/serialize"
 	"github.com/luci/gkvlite"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 )
 
 type iterDefinition struct {

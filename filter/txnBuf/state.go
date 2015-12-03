@@ -8,13 +8,13 @@ import (
 	"bytes"
 	"sync"
 
-	"github.com/luci/gae/impl/memory"
-	"github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
-	"github.com/luci/gae/service/info"
 	"github.com/luci/luci-go/common/errors"
 	"github.com/luci/luci-go/common/parallel"
 	"github.com/luci/luci-go/common/stringset"
+	"github.com/tetrafolium/gae/impl/memory"
+	"github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
+	"github.com/tetrafolium/gae/service/info"
 	"golang.org/x/net/context"
 )
 

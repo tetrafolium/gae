@@ -7,7 +7,7 @@ package featureBreaker
 import (
 	"golang.org/x/net/context"
 
-	tq "github.com/luci/gae/service/taskqueue"
+	tq "github.com/tetrafolium/gae/service/taskqueue"
 )
 
 type tqState struct {

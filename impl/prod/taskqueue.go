@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"reflect"
 
-	tq "github.com/luci/gae/service/taskqueue"
+	tq "github.com/tetrafolium/gae/service/taskqueue"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/taskqueue"

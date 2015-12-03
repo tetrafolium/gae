@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/luci/gae/service/blobstore"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tetrafolium/gae/service/blobstore"
 )
 
 func mps(vals ...interface{}) PropertySlice {

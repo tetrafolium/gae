@@ -10,9 +10,9 @@ import (
 
 	"golang.org/x/net/context"
 
-	tq "github.com/luci/gae/service/taskqueue"
 	"github.com/luci/luci-go/common/errors"
 	"github.com/luci/luci-go/common/mathrand"
+	tq "github.com/tetrafolium/gae/service/taskqueue"
 )
 
 /////////////////////////////// public functions ///////////////////////////////

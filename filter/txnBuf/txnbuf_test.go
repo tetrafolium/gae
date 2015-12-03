@@ -10,13 +10,13 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/luci/gae/filter/count"
-	"github.com/luci/gae/impl/memory"
-	"github.com/luci/gae/service/datastore"
 	"github.com/luci/luci-go/common/cmpbin"
 	"github.com/luci/luci-go/common/errors"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tetrafolium/gae/filter/count"
+	"github.com/tetrafolium/gae/impl/memory"
+	"github.com/tetrafolium/gae/service/datastore"
 	"golang.org/x/net/context"
 )
 

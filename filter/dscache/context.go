@@ -5,10 +5,10 @@
 package dscache
 
 import (
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/info"
-	mc "github.com/luci/gae/service/memcache"
 	"github.com/luci/luci-go/common/mathrand"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/info"
+	mc "github.com/tetrafolium/gae/service/memcache"
 	"golang.org/x/net/context"
 )
 

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luci/gae/service/blobstore"
-	dstore "github.com/luci/gae/service/datastore"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tetrafolium/gae/service/blobstore"
+	dstore "github.com/tetrafolium/gae/service/datastore"
 	"google.golang.org/appengine/aetest"
 )
 

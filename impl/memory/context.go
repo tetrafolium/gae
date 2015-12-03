@@ -8,7 +8,7 @@ import (
 	"errors"
 	"sync"
 
-	ds "github.com/luci/gae/service/datastore"
+	ds "github.com/tetrafolium/gae/service/datastore"
 	"golang.org/x/net/context"
 )
 

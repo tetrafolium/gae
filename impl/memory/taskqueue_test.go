@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	dsS "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/info"
-	tqS "github.com/luci/gae/service/taskqueue"
 	"github.com/luci/luci-go/common/clock"
 	"github.com/luci/luci-go/common/clock/testclock"
 	"github.com/luci/luci-go/common/mathrand"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
+	dsS "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/info"
+	tqS "github.com/tetrafolium/gae/service/taskqueue"
 	"golang.org/x/net/context"
 )
 

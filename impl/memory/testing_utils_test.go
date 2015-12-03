@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
 	"github.com/luci/luci-go/common/cmpbin"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 )
 
 func init() {

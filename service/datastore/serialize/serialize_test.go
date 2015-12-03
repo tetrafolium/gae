@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luci/gae/service/blobstore"
-	ds "github.com/luci/gae/service/datastore"
 	"github.com/luci/luci-go/common/cmpbin"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
+	"github.com/tetrafolium/gae/service/blobstore"
+	ds "github.com/tetrafolium/gae/service/datastore"
 )
 
 func init() {

@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"sort"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
 	"github.com/luci/gkvlite"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 )
 
 type qIndexSlice []*ds.IndexDefinition
