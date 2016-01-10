@@ -5,7 +5,7 @@
 package txnBuf
 
 import (
-	ds "github.com/luci/gae/service/datastore"
+	ds "github.com/tetrafolium/gae/service/datastore"
 	"github.com/luci/luci-go/common/errors"
 	"golang.org/x/net/context"
 )

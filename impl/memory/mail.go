@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/luci/gae/service/mail"
-	"github.com/luci/gae/service/user"
+	"github.com/tetrafolium/gae/service/mail"
+	"github.com/tetrafolium/gae/service/user"
 	"golang.org/x/net/context"
 )
 

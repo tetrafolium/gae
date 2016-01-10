@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/service/info"
 	"github.com/luci/luci-go/common/errors"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"

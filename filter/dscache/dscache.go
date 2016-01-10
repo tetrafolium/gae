@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
+	"github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 )
 
 var (

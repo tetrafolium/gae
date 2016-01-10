@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"time"
 
-	bs "github.com/luci/gae/service/blobstore"
-	ds "github.com/luci/gae/service/datastore"
+	bs "github.com/tetrafolium/gae/service/blobstore"
+	ds "github.com/tetrafolium/gae/service/datastore"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"

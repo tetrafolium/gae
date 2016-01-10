@@ -5,8 +5,8 @@
 package prod
 
 import (
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/info"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/info"
 	"github.com/luci/luci-go/common/errors"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/datastore"

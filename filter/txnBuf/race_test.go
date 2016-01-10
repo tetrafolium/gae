@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/luci/gae/impl/memory"
-	"github.com/luci/gae/service/datastore"
+	"github.com/tetrafolium/gae/impl/memory"
+	"github.com/tetrafolium/gae/service/datastore"
 	"golang.org/x/net/context"
 )
 

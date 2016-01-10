@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/info"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/info"
 )
 
 //////////////////////////////////// public ////////////////////////////////////

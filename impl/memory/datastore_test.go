@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	dsS "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
-	infoS "github.com/luci/gae/service/info"
+	dsS "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
+	infoS "github.com/tetrafolium/gae/service/info"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"

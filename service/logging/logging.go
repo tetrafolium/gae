@@ -6,6 +6,6 @@
 //
 // In order to use logging, please import and use the
 // "github.com/luci/luci-go/common/logging" package. Both
-// "github.com/luci/gae/impl/prod" and "github.com/luci/gae/impl/memory"
+// "github.com/tetrafolium/gae/impl/prod" and "github.com/tetrafolium/gae/impl/memory"
 // implement that service appropriately.
 package logging

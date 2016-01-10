@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/luci/gae/service/info"
-	"github.com/luci/gae/service/urlfetch"
+	"github.com/tetrafolium/gae/service/info"
+	"github.com/tetrafolium/gae/service/urlfetch"
 	"golang.org/x/net/context"
 	gOAuth "golang.org/x/oauth2/google"
 	"google.golang.org/appengine"
@@ -71,13 +71,13 @@ func setupAECtx(c, aeCtx context.Context) context.Context {
 //
 // The services added are:
 //   - github.com/luci-go/common/logging
-//   - github.com/luci/gae/service/datastore
-//   - github.com/luci/gae/service/info
-//   - github.com/luci/gae/service/mail
-//   - github.com/luci/gae/service/memcache
-//   - github.com/luci/gae/service/taskqueue
-//   - github.com/luci/gae/service/urlfetch
-//   - github.com/luci/gae/service/user
+//   - github.com/tetrafolium/gae/service/datastore
+//   - github.com/tetrafolium/gae/service/info
+//   - github.com/tetrafolium/gae/service/mail
+//   - github.com/tetrafolium/gae/service/memcache
+//   - github.com/tetrafolium/gae/service/taskqueue
+//   - github.com/tetrafolium/gae/service/urlfetch
+//   - github.com/tetrafolium/gae/service/user
 //
 // These can be retrieved with the <service>.Get functions.
 //

@@ -5,13 +5,13 @@
 package prod
 
 import (
-	gae_user "github.com/luci/gae/service/user"
+	gae_user "github.com/tetrafolium/gae/service/user"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine/user"
 )
 
 // useUser adds a user service implementation to context, accessible
-// by "github.com/luci/gae/service/user".Get(c)
+// by "github.com/tetrafolium/gae/service/user".Get(c)
 func useUser(c context.Context) context.Context {
 	return gae_user.SetFactory(c, func(ci context.Context) gae_user.Interface {
 		return userImpl{AEContext(ci)}
