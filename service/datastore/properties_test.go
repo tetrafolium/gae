@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luci/gae/service/blobstore"
+	"github.com/tetrafolium/gae/service/blobstore"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

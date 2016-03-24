@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	dsS "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/info"
-	tqS "github.com/luci/gae/service/taskqueue"
+	dsS "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/info"
+	tqS "github.com/tetrafolium/gae/service/taskqueue"
 	"github.com/luci/luci-go/common/clock"
 	"github.com/luci/luci-go/common/clock/testclock"
 	"github.com/luci/luci-go/common/mathrand"

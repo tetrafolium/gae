@@ -7,7 +7,7 @@ package count
 import (
 	"golang.org/x/net/context"
 
-	"github.com/luci/gae/service/module"
+	"github.com/tetrafolium/gae/service/module"
 )
 
 // ModuleCounter is the counter object for the Module service.

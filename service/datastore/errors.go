@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/luci/gae"
+	"github.com/tetrafolium/gae"
 	"google.golang.org/appengine/datastore"
 )
 
@@ -18,7 +18,7 @@ var (
 	ErrNoSuchEntity          = datastore.ErrNoSuchEntity
 	ErrConcurrentTransaction = datastore.ErrConcurrentTransaction
 
-	// Stop is an alias for "github.com/luci/gae".Stop
+	// Stop is an alias for "github.com/tetrafolium/gae".Stop
 	Stop = gae.Stop
 )
 

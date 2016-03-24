@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/luci/gae/service/blobstore"
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/service/blobstore"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/info"
 	"golang.org/x/net/context"
 
 	. "github.com/luci/luci-go/common/testing/assertions"

@@ -7,7 +7,7 @@ package featureBreaker
 import (
 	"golang.org/x/net/context"
 
-	"github.com/luci/gae/service/module"
+	"github.com/tetrafolium/gae/service/module"
 )
 
 type modState struct {

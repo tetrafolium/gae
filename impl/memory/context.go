@@ -8,7 +8,7 @@ import (
 	"errors"
 	"sync"
 
-	ds "github.com/luci/gae/service/datastore"
+	ds "github.com/tetrafolium/gae/service/datastore"
 	"github.com/luci/luci-go/common/logging/memlogger"
 	"golang.org/x/net/context"
 )
@@ -96,12 +96,12 @@ func Use(c context.Context) context.Context {
 
 // UseWithAppID adds implementations for the following gae services to the
 // context:
-//   * github.com/luci/gae/service/datastore
-//   * github.com/luci/gae/service/info
-//   * github.com/luci/gae/service/mail
-//   * github.com/luci/gae/service/memcache
-//   * github.com/luci/gae/service/taskqueue
-//   * github.com/luci/gae/service/user
+//   * github.com/tetrafolium/gae/service/datastore
+//   * github.com/tetrafolium/gae/service/info
+//   * github.com/tetrafolium/gae/service/mail
+//   * github.com/tetrafolium/gae/service/memcache
+//   * github.com/tetrafolium/gae/service/taskqueue
+//   * github.com/tetrafolium/gae/service/user
 //   * github.com/luci/luci-go/common/logger (using memlogger)
 //
 // The application id wil be set to 'aid', and will not be modifiable in this

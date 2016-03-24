@@ -13,7 +13,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/luci/gae/service/blobstore"
+	"github.com/tetrafolium/gae/service/blobstore"
 )
 
 var (

@@ -7,13 +7,13 @@ package dummy
 import (
 	"testing"
 
-	dsS "github.com/luci/gae/service/datastore"
-	infoS "github.com/luci/gae/service/info"
-	mailS "github.com/luci/gae/service/mail"
-	mcS "github.com/luci/gae/service/memcache"
-	modS "github.com/luci/gae/service/module"
-	tqS "github.com/luci/gae/service/taskqueue"
-	userS "github.com/luci/gae/service/user"
+	dsS "github.com/tetrafolium/gae/service/datastore"
+	infoS "github.com/tetrafolium/gae/service/info"
+	mailS "github.com/tetrafolium/gae/service/mail"
+	mcS "github.com/tetrafolium/gae/service/memcache"
+	modS "github.com/tetrafolium/gae/service/module"
+	tqS "github.com/tetrafolium/gae/service/taskqueue"
+	userS "github.com/tetrafolium/gae/service/user"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"
 )

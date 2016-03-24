@@ -7,7 +7,7 @@ package memory
 import (
 	"testing"
 
-	userS "github.com/luci/gae/service/user"
+	userS "github.com/tetrafolium/gae/service/user"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"

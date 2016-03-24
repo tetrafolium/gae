@@ -9,7 +9,7 @@ package datastore
 import (
 	"testing"
 
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/service/info"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"
 )

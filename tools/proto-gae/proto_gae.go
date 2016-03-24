@@ -90,14 +90,14 @@ package {{index . "package"}}
 import (
 	"github.com/golang/protobuf/proto"
 
-	"github.com/luci/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore"
 ){{range index . "types"}}
 
 var _ datastore.PropertyConverter = (*{{.}})(nil)
 
 // ToProperty implements datastore.PropertyConverter. It causes an embedded
 // '{{.}}' to serialize to an unindexed '[]byte' when used with the
-// "github.com/luci/gae" library.
+// "github.com/tetrafolium/gae" library.
 func (p *{{.}}) ToProperty() (prop datastore.Property, err error) {
 	data, err := proto.Marshal(p)
 	if err == nil {
@@ -107,7 +107,7 @@ func (p *{{.}}) ToProperty() (prop datastore.Property, err error) {
 }
 
 // FromProperty implements datastore.PropertyConverter. It parses a '[]byte'
-// into an embedded '{{.}}' when used with the "github.com/luci/gae" library.
+// into an embedded '{{.}}' when used with the "github.com/tetrafolium/gae" library.
 func (p *{{.}}) FromProperty(prop datastore.Property) error {
 	data, err := prop.Project(datastore.PTBytes)
 	if err != nil {

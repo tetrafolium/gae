@@ -45,8 +45,8 @@
 //     "fmt"
 //     "net/http"
 //
-//     "github.com/luci/gae/impl/prod"
-//     "github.com/luci/gae/service/datastore"
+//     "github.com/tetrafolium/gae/impl/prod"
+//     "github.com/tetrafolium/gae/service/datastore"
 //     "golang.org/x/net/context"
 //   )
 //
@@ -78,8 +78,8 @@
 //     "fmt"
 //     "net/http"
 //
-//     "github.com/luci/gae/impl/memory"
-//     "github.com/luci/gae/service/datastore"
+//     "github.com/tetrafolium/gae/impl/memory"
+//     "github.com/tetrafolium/gae/service/datastore"
 //     "golang.org/x/net/context"
 //   )
 //

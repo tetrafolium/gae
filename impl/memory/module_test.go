@@ -7,7 +7,7 @@ package memory
 import (
 	"testing"
 
-	"github.com/luci/gae/service/module"
+	"github.com/tetrafolium/gae/service/module"
 	"golang.org/x/net/context"
 
 	. "github.com/smartystreets/goconvey/convey"

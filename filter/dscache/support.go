@@ -9,8 +9,8 @@ import (
 	"math/rand"
 	"time"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/memcache"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/memcache"
 	"github.com/luci/luci-go/common/errors"
 	log "github.com/luci/luci-go/common/logging"
 	"golang.org/x/net/context"

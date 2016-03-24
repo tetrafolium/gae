@@ -7,7 +7,7 @@ package count
 import (
 	"golang.org/x/net/context"
 
-	ds "github.com/luci/gae/service/datastore"
+	ds "github.com/tetrafolium/gae/service/datastore"
 )
 
 // DSCounter is the counter object for the datastore service.

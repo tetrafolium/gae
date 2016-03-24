@@ -5,7 +5,7 @@
 package featureBreaker
 
 import (
-	"github.com/luci/gae/service/mail"
+	"github.com/tetrafolium/gae/service/mail"
 	"golang.org/x/net/context"
 )
 

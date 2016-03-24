@@ -5,19 +5,19 @@ gae: A Google AppEngine SDK wrapper
 #### **THIS PACKAGE HAS NO API COMPATIBILITY GUARANTEES. USE UNPINNED AT YOUR OWN PERIL.**
 (but generally it should be pretty stableish).
 
-[![GoDoc](https://godoc.org/github.com/luci/gae?status.svg)](https://godoc.org/github.com/luci/gae)
+[![GoDoc](https://godoc.org/github.com/tetrafolium/gae?status.svg)](https://godoc.org/github.com/tetrafolium/gae)
 [![Build Status](https://travis-ci.org/luci/gae.svg?branch=master)](https://travis-ci.org/luci/gae)
 [![Coverage Status](https://coveralls.io/repos/luci/gae/badge.svg?branch=master&service=github)](https://coveralls.io/github/luci/gae?branch=master)
 
 Installing
 ----------
 
-    go get -u github.com/luci/gae/...
+    go get -u github.com/tetrafolium/gae/...
 
 Why/What/How
 ------------
 
-See the [godocs](https://godoc.org/github.com/luci/gae).
+See the [godocs](https://godoc.org/github.com/tetrafolium/gae).
 
 Versioning
 ----------
@@ -36,7 +36,7 @@ Run the following to setup the code review tool and create your first review:
 
     git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $HOME/src/depot_tools
     export PATH="$PATH:$HOME/src/depot_tools"
-    cd $GOROOT/github.com/luci/gae
+    cd $GOROOT/github.com/tetrafolium/gae
     git new-branch work
     # or `git checkout -b work origin/master` if you like typing more.
 

@@ -7,7 +7,7 @@ package datastore
 import (
 	"fmt"
 
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/service/info"
 	"github.com/luci/luci-go/common/errors"
 	"golang.org/x/net/context"
 )

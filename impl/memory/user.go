@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/luci/gae/service/user"
+	"github.com/tetrafolium/gae/service/user"
 )
 
 type userData struct {

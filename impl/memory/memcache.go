@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	mc "github.com/luci/gae/service/memcache"
+	mc "github.com/tetrafolium/gae/service/memcache"
 	"github.com/luci/luci-go/common/clock"
 	"github.com/luci/luci-go/common/errors"
 )

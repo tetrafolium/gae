@@ -8,8 +8,8 @@ import (
 	"bytes"
 	"fmt"
 
-	ds "github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/datastore/serialize"
+	ds "github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/datastore/serialize"
 	"github.com/luci/luci-go/common/cmpbin"
 	"github.com/luci/luci-go/common/stringset"
 )

@@ -7,8 +7,8 @@ package dscache
 import (
 	"sync"
 
-	"github.com/luci/gae/service/datastore"
-	"github.com/luci/gae/service/memcache"
+	"github.com/tetrafolium/gae/service/datastore"
+	"github.com/tetrafolium/gae/service/memcache"
 	"github.com/luci/luci-go/common/errors"
 	log "github.com/luci/luci-go/common/logging"
 )

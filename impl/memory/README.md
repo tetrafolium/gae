@@ -20,7 +20,7 @@ to manage state for the data. The schema for these tables is enumerated below
 to make the code a bit easier to reason about.
 
 All datastore user objects (Keys, Properties, PropertyMaps, etc.) are serialized
-using `github.com/luci/gae/service/datastore/serialize`, which in turn uses the
+using `github.com/tetrafolium/gae/service/datastore/serialize`, which in turn uses the
 primitives available in `github.com/luci/luci-go/common/cmpbin`. The encodings
 are important to understanding why the schemas below sort correctly when
 compared only using `bytes.Compare` (aka `memcmp`). This doc will assume that

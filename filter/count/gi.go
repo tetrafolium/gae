@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/service/info"
 )
 
 // InfoCounter is the counter object for the GlobalInfo service.

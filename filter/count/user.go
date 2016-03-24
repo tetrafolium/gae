@@ -5,7 +5,7 @@
 package count
 
 import (
-	"github.com/luci/gae/service/user"
+	"github.com/tetrafolium/gae/service/user"
 	"golang.org/x/net/context"
 )
 

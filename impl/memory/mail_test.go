@@ -8,8 +8,8 @@ import (
 	net_mail "net/mail"
 	"testing"
 
-	mailS "github.com/luci/gae/service/mail"
-	userS "github.com/luci/gae/service/user"
+	mailS "github.com/tetrafolium/gae/service/mail"
+	userS "github.com/tetrafolium/gae/service/user"
 	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"

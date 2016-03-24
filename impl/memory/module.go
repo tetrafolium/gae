@@ -5,7 +5,7 @@
 package memory
 
 import (
-	"github.com/luci/gae/service/module"
+	"github.com/tetrafolium/gae/service/module"
 	"golang.org/x/net/context"
 )
 

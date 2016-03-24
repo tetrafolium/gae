@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/luci/gae/service/info"
+	"github.com/tetrafolium/gae/service/info"
 )
 
 type infoState struct {
