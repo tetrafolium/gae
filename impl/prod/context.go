@@ -14,7 +14,7 @@ import (
 	"github.com/tetrafolium/gae/service/info"
 	"github.com/tetrafolium/gae/service/urlfetch"
 	"golang.org/x/net/context"
-	gOAuth "golang.org/x/oauth2/google"
+	gOAuth "github.com/tetrafolium/oauth2/google"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/remote_api"
 )
