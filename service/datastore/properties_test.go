@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
@@ -11,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tetrafolium/gae/service/blobstore"
 	. "github.com/smartystreets/goconvey/convey"
+	"go.chromium.org/gae/service/blobstore"
 )
 
 type myint int
@@ -91,7 +101,7 @@ func TestProperties(t *testing.T) {
 					So(pv.Type().String(), ShouldEqual, "PTBlobKey")
 				})
 				Convey("datastore Key is distinguished", func() {
-					k := MakeKey("appid", "ns", "kind", "1")
+					k := MkKeyContext("appid", "ns").MakeKey("kind", "1")
 					pv := MkProperty(k)
 					So(pv.Value(), ShouldHaveSameTypeAs, k)
 					So(pv.Value().(*Key).Equal(k), ShouldBeTrue)
@@ -194,16 +204,16 @@ func TestDSPropertyMapImpl(t *testing.T) {
 	Convey("PropertyMap load/save err conditions", t, func() {
 		Convey("empty", func() {
 			pm := PropertyMap{}
-			err := pm.Load(PropertyMap{"hello": {Property{}}})
+			err := pm.Load(PropertyMap{"hello": Property{}})
 			So(err, ShouldBeNil)
-			So(pm, ShouldResemble, PropertyMap{"hello": {Property{}}})
+			So(pm, ShouldResemble, PropertyMap{"hello": Property{}})
 
 			npm, _ := pm.Save(false)
 			So(npm, ShouldResemble, pm)
 		})
 		Convey("meta", func() {
 			Convey("working", func() {
-				pm := PropertyMap{"": {MkProperty("trap!")}}
+				pm := PropertyMap{"": MkProperty("trap!")}
 				_, ok := pm.GetMeta("foo")
 				So(ok, ShouldBeFalse)
 
@@ -224,7 +234,7 @@ func TestDSPropertyMapImpl(t *testing.T) {
 
 			Convey("too many values picks the first one", func() {
 				pm := PropertyMap{
-					"$thing": {MkProperty(100), MkProperty(200)},
+					"$thing": PropertySlice{MkProperty(100), MkProperty(200)},
 				}
 				v, ok := pm.GetMeta("thing")
 				So(ok, ShouldBeTrue)

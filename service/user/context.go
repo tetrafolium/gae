@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package user
 
@@ -17,16 +27,16 @@ var (
 
 // Factory is the function signature for factory methods compatible with
 // SetFactory.
-type Factory func(context.Context) Interface
+type Factory func(context.Context) RawInterface
 
 // Filter is the function signature for a filter user implementation. It
 // gets the current user implementation, and returns a new user implementation
 // backed by the one passed in.
-type Filter func(context.Context, Interface) Interface
+type Filter func(context.Context, RawInterface) RawInterface
 
-// getUnfiltered gets gets the Interface implementation from context without
+// getUnfiltered gets gets the RawInterface implementation from context without
 // any of the filters applied.
-func getUnfiltered(c context.Context) Interface {
+func getUnfiltered(c context.Context) RawInterface {
 	if f, ok := c.Value(serviceKey).(Factory); ok && f != nil {
 		return f(c)
 	}
@@ -41,9 +51,9 @@ func getCurFilters(c context.Context) []Filter {
 	return nil
 }
 
-// Get pulls the user service implementation from context or nil if it
+// Raw pulls the user service implementation from context or nil if it
 // wasn't set.
-func Get(c context.Context) Interface {
+func Raw(c context.Context) RawInterface {
 	ret := getUnfiltered(c)
 	if ret == nil {
 		return nil
@@ -54,7 +64,7 @@ func Get(c context.Context) Interface {
 	return ret
 }
 
-// SetFactory sets the function to produce user.Interface instances,
+// SetFactory sets the function to produce user.RawInterface instances,
 // as returned by the Get method.
 func SetFactory(c context.Context, f Factory) context.Context {
 	return context.WithValue(c, serviceKey, f)
@@ -63,11 +73,11 @@ func SetFactory(c context.Context, f Factory) context.Context {
 // Set sets the user service in this context. Useful for testing with a quick
 // mock. This is just a shorthand SetFactory invocation to set a factory which
 // always returns the same object.
-func Set(c context.Context, u Interface) context.Context {
-	return SetFactory(c, func(context.Context) Interface { return u })
+func Set(c context.Context, u RawInterface) context.Context {
+	return SetFactory(c, func(context.Context) RawInterface { return u })
 }
 
-// AddFilters adds Interface filters to the context.
+// AddFilters adds RawInterface filters to the context.
 func AddFilters(c context.Context, filts ...Filter) context.Context {
 	if len(filts) == 0 {
 		return c

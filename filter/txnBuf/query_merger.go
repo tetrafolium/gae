@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package txnBuf
 
@@ -8,10 +18,10 @@ import (
 	"bytes"
 	"sort"
 
-	"github.com/tetrafolium/gae/impl/memory"
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/luci-go/common/stringset"
+	"go.chromium.org/gae/impl/memory"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
+	"go.chromium.org/luci/common/data/stringset"
 )
 
 // queryToIter takes a FinalizedQuery and returns an iterator function which
@@ -235,9 +245,6 @@ func runMergedQueries(fq *ds.FinalizedQuery, sizes *sizeTracker,
 			}
 		}
 		if err := cb(toUse.key, toUse.data); err != nil {
-			if err == ds.Stop {
-				return nil
-			}
 			return err
 		}
 	}
@@ -265,8 +272,8 @@ func toComparableString(start, end []byte, order []ds.IndexColumn, k *ds.Key, pm
 	for _, ord := range order {
 		row, ok := ps[ord.Property]
 		if !ok {
-			if vals, ok := pm[ord.Property]; ok {
-				row = serialize.PropertySlice(vals)
+			if pslice := pm.Slice(ord.Property); len(pslice) > 0 {
+				row = serialize.PropertySlice(pslice)
 			}
 		}
 		sort.Sort(row)

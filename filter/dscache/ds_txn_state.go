@@ -1,22 +1,33 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package dscache
 
 import (
 	"sync"
 
-	"github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/memcache"
-	"github.com/luci/luci-go/common/errors"
-	log "github.com/luci/luci-go/common/logging"
+	"go.chromium.org/gae/service/datastore"
+	mc "go.chromium.org/gae/service/memcache"
+
+	"go.chromium.org/luci/common/errors"
+	log "go.chromium.org/luci/common/logging"
 )
 
 type dsTxnState struct {
 	sync.Mutex
 
-	toLock   []memcache.Item
+	toLock   []mc.Item
 	toDelete map[string]struct{}
 }
 
@@ -41,10 +52,10 @@ func (s *dsTxnState) apply(sc *supportContext) error {
 
 	// this is a hard failure. No mutation can occur if we're unable to set
 	// locks out. See "DANGER ZONE" in the docs.
-	err := sc.mc.SetMulti(s.toLock)
+	err := mc.Set(sc.c, s.toLock...)
 	if err != nil {
 		(log.Fields{log.ErrorKey: err}).Errorf(
-			sc.c, "dscache: HARD FAILURE: dsTxnState.apply(): mc.SetMulti")
+			sc.c, "dscache: HARD FAILURE: dsTxnState.apply(): mc.Set")
 	}
 	return err
 }
@@ -61,9 +72,9 @@ func (s *dsTxnState) release(sc *supportContext) {
 		delKeys = append(delKeys, k)
 	}
 
-	if err := errors.Filter(sc.mc.DeleteMulti(delKeys), memcache.ErrCacheMiss); err != nil {
+	if err := errors.Filter(mc.Delete(sc.c, delKeys...), mc.ErrCacheMiss); err != nil {
 		(log.Fields{log.ErrorKey: err}).Warningf(
-			sc.c, "dscache: txn.release: memcache.DeleteMulti")
+			sc.c, "dscache: txn.release: memcache.Delete")
 	}
 }
 

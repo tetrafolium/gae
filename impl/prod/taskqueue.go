@@ -1,14 +1,27 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package prod
 
 import (
 	"fmt"
 	"reflect"
+	"time"
 
-	tq "github.com/tetrafolium/gae/service/taskqueue"
+	"go.chromium.org/gae/impl/prod/constraints"
+	tq "go.chromium.org/gae/service/taskqueue"
+
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/taskqueue"
@@ -17,11 +30,8 @@ import (
 // useTQ adds a gae.TaskQueue implementation to context, accessible
 // by gae.GetTQ(c)
 func useTQ(c context.Context) context.Context {
-	return tq.SetRawFactory(c, func(ci context.Context, wantTxn bool) tq.RawInterface {
-		if wantTxn {
-			return tqImpl{AEContext(ci)}
-		}
-		return tqImpl{AEContextNoTxn(ci)}
+	return tq.SetRawFactory(c, func(ci context.Context) tq.RawInterface {
+		return tqImpl{getAEContext(ci)}
 	})
 }
 
@@ -88,6 +98,15 @@ func tqMF2R(ns []*tq.Task) []*taskqueue.Task {
 	return ret
 }
 
+// tqMR2F (TQ multi-real-to-fake) converts []*taskqueue.Task to []*tq.Task.
+func tqMR2F(ns []*taskqueue.Task) []*tq.Task {
+	ret := make([]*tq.Task, len(ns))
+	for i, t := range ns {
+		ret[i] = tqR2F(t)
+	}
+	return ret
+}
+
 func (t tqImpl) AddMulti(tasks []*tq.Task, queueName string, cb tq.RawTaskCB) error {
 	realTasks, err := taskqueue.AddMulti(t.aeCtx, tqMF2R(tasks), queueName)
 	if err != nil {
@@ -112,10 +131,37 @@ func (t tqImpl) AddMulti(tasks []*tq.Task, queueName string, cb tq.RawTaskCB) er
 func (t tqImpl) DeleteMulti(tasks []*tq.Task, queueName string, cb tq.RawCB) error {
 	err := taskqueue.DeleteMulti(t.aeCtx, tqMF2R(tasks), queueName)
 	if me, ok := err.(appengine.MultiError); ok {
-		for _, err := range me {
-			cb(err)
+		for i, err := range me {
+			if err != nil {
+				cb(i, err)
+			}
 		}
 		err = nil
+	}
+	return err
+}
+
+func (t tqImpl) Lease(maxTasks int, queueName string, leaseTime time.Duration) ([]*tq.Task, error) {
+	tasks, err := taskqueue.Lease(t.aeCtx, maxTasks, queueName, int(leaseTime/time.Second))
+	if err != nil {
+		return nil, err
+	}
+	return tqMR2F(tasks), nil
+}
+
+func (t tqImpl) LeaseByTag(maxTasks int, queueName string, leaseTime time.Duration, tag string) ([]*tq.Task, error) {
+	tasks, err := taskqueue.LeaseByTag(t.aeCtx, maxTasks, queueName, int(leaseTime/time.Second), tag)
+	if err != nil {
+		return nil, err
+	}
+	return tqMR2F(tasks), nil
+}
+
+func (t tqImpl) ModifyLease(task *tq.Task, queueName string, leaseTime time.Duration) error {
+	realTask := tqF2R(task)
+	err := taskqueue.ModifyLease(t.aeCtx, realTask, queueName, int(leaseTime/time.Second))
+	if err == nil {
+		task.ETA = realTask.ETA
 	}
 	return err
 }
@@ -135,6 +181,8 @@ func (t tqImpl) Stats(queueNames []string, cb tq.RawStatsCB) error {
 	return nil
 }
 
-func (t tqImpl) Testable() tq.Testable {
+func (t tqImpl) Constraints() tq.Constraints { return constraints.TQ() }
+
+func (t tqImpl) GetTestable() tq.Testable {
 	return nil
 }

@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -10,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/luci-go/common/cmpbin"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
+	"go.chromium.org/luci/common/data/cmpbin"
 )
 
 func init() {
@@ -23,36 +33,63 @@ func init() {
 var nextMarker = "NEXT MARKER"
 var Next = &nextMarker
 
-// Use like:
+var multiMarker = "MULTI MARKER"
+var Multi = &multiMarker
+
+// If you want an entry that is single to be treated as multi-, prepend it
+// with Multi. Terminate each set of property tokens with Next.
 //   pmap(
 //     "prop", "val", 0, 100, Next,
 //     "other", "val", 0, 100, Next,
+//     "name", Multi, "value", Next,
 //   )
+//
+//
 //
 func pmap(stuff ...interface{}) ds.PropertyMap {
 	ret := ds.PropertyMap{}
 
-	nom := func() interface{} {
-		if len(stuff) > 0 {
-			ret := stuff[0]
-			stuff = stuff[1:]
-			return ret
+	nom := func() (name string, toks []interface{}, multi bool) {
+		var i int
+
+		for i = 0; i < len(stuff); i++ {
+			e := stuff[i]
+			switch {
+			case e == Next:
+				stuff = stuff[i+1:]
+				return
+			case e == Multi:
+				multi = true
+			case i == 0:
+				name = e.(string)
+			default:
+				toks = append(toks, e)
+			}
 		}
-		return nil
+
+		stuff = nil
+		return
 	}
 
 	for len(stuff) > 0 {
-		pname := nom().(string)
+		pname, toks, multi := nom()
+
+		var mp func(interface{}) ds.Property
 		if pname[0] == '$' || (strings.HasPrefix(pname, "__") && strings.HasSuffix(pname, "__")) {
-			for len(stuff) > 0 && stuff[0] != Next {
-				ret[pname] = append(ret[pname], propNI(nom()))
-			}
+			mp = propNI
 		} else {
-			for len(stuff) > 0 && stuff[0] != Next {
-				ret[pname] = append(ret[pname], prop(nom()))
-			}
+			mp = prop
 		}
-		nom()
+
+		if len(toks) == 1 && !multi {
+			ret[pname] = mp(toks[0])
+		} else {
+			pslice := make(ds.PropertySlice, len(toks))
+			for i, tok := range toks {
+				pslice[i] = mp(tok)
+			}
+			ret[pname] = pslice
+		}
 	}
 
 	return ret
@@ -89,7 +126,7 @@ var (
 )
 
 func key(elems ...interface{}) *ds.Key {
-	return ds.MakeKey("dev~app", "ns", elems...)
+	return ds.MkKeyContext("dev~app", "ns").MakeKey(elems...)
 }
 
 func die(err error) {

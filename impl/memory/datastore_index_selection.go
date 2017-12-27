@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -10,9 +20,9 @@ import (
 	"sort"
 	"strings"
 
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/luci-go/common/stringset"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
+	"go.chromium.org/luci/common/data/stringset"
 )
 
 // ErrMissingIndex is returned when the current indexes are not sufficient
@@ -36,8 +46,7 @@ func (e *ErrMissingIndex) Error() string {
 //   deduplication is applied externally
 //   projection / keysonly / entity retrieval is done externally
 type reducedQuery struct {
-	aid  string
-	ns   string
+	kc   ds.KeyContext
 	kind string
 
 	// eqFilters indicate the set of all prefix constraints which need to be
@@ -70,7 +79,7 @@ type indexDefinitionSortable struct {
 	// redundant columns! (e.g. (tag, tag) is a perfectly valid prefix, becuase
 	// (tag=1, tag=2) is a perfectly valid query).
 	eqFilts []ds.IndexColumn
-	coll    *memCollection
+	coll    memCollection
 }
 
 func (i *indexDefinitionSortable) hasAncestor() bool {
@@ -131,7 +140,7 @@ func (idxs indexDefinitionSortableSlice) Less(i, j int) bool {
 // If the proposed index is PERFECT (e.g. contains enough columns to cover all
 // equality filters, and also has the correct suffix), idxs will be replaced
 // with JUST that index, and this will return true.
-func (idxs *indexDefinitionSortableSlice) maybeAddDefinition(q *reducedQuery, s *memStore, missingTerms stringset.Set, id *ds.IndexDefinition) bool {
+func (idxs *indexDefinitionSortableSlice) maybeAddDefinition(q *reducedQuery, s memStore, missingTerms stringset.Set, id *ds.IndexDefinition) bool {
 	// Kindless queries are handled elsewhere.
 	if id.Kind != q.kind {
 		impossible(
@@ -197,15 +206,13 @@ func (idxs *indexDefinitionSortableSlice) maybeAddDefinition(q *reducedQuery, s 
 	// a builtin and it doesn't exist, it still needs to be one of the 'possible'
 	// indexes... it just means that the user's query will end up with no results.
 	coll := s.GetCollection(
-		fmt.Sprintf("idx:%s:%s", q.ns, serialize.ToBytes(*id.PrepForIdxTable())))
+		fmt.Sprintf("idx:%s:%s", q.kc.Namespace, serialize.ToBytes(*id.PrepForIdxTable())))
 
 	// First, see if it's a perfect match. If it is, then our search is over.
 	//
 	// A perfect match contains ALL the equality filter columns (or more, since
 	// we can use residuals to fill in the extras).
-	toAdd := indexDefinitionSortable{coll: coll}
-	toAdd.eqFilts = eqFilts
-	for _, sb := range toAdd.eqFilts {
+	for _, sb := range eqFilts {
 		missingTerms.Del(sb.Property)
 	}
 
@@ -219,6 +226,7 @@ func (idxs *indexDefinitionSortableSlice) maybeAddDefinition(q *reducedQuery, s 
 			}
 		}
 	}
+	toAdd := indexDefinitionSortable{coll: coll, eqFilts: eqFilts}
 	if perfect {
 		*idxs = indexDefinitionSortableSlice{toAdd}
 	} else {
@@ -230,7 +238,7 @@ func (idxs *indexDefinitionSortableSlice) maybeAddDefinition(q *reducedQuery, s 
 // getRelevantIndexes retrieves the relevant indexes which could be used to
 // service q. It returns nil if it's not possible to service q with the current
 // indexes.
-func getRelevantIndexes(q *reducedQuery, s *memStore) (indexDefinitionSortableSlice, error) {
+func getRelevantIndexes(q *reducedQuery, s memStore) (indexDefinitionSortableSlice, error) {
 	missingTerms := stringset.New(len(q.eqFilters))
 	for k := range q.eqFilters {
 		if k == "__ancestor__" {
@@ -297,7 +305,7 @@ func getRelevantIndexes(q *reducedQuery, s *memStore) (indexDefinitionSortableSl
 
 	// this query is impossible to fulfil with the current indexes. Not all the
 	// terms (equality + projection) are satisfied.
-	if missingTerms.Len() < 0 || len(idxs) == 0 {
+	if missingTerms.Len() > 0 || len(idxs) == 0 {
 		remains := &ds.IndexDefinition{
 			Kind:     q.kind,
 			Ancestor: q.eqFilters["__ancestor__"] != nil,
@@ -319,7 +327,7 @@ func getRelevantIndexes(q *reducedQuery, s *memStore) (indexDefinitionSortableSl
 			impossible(
 				fmt.Errorf("recommended missing index would be a builtin: %s", remains))
 		}
-		return nil, &ErrMissingIndex{q.ns, remains}
+		return nil, &ErrMissingIndex{q.kc.Namespace, remains}
 	}
 
 	return idxs, nil
@@ -468,10 +476,10 @@ func calculateConstraints(q *reducedQuery) *constraints {
 
 // getIndexes returns a set of iterator definitions. Iterating over these
 // will result in matching suffixes.
-func getIndexes(q *reducedQuery, s *memStore) ([]*iterDefinition, error) {
+func getIndexes(q *reducedQuery, s memStore) ([]*iterDefinition, error) {
 	relevantIdxs := indexDefinitionSortableSlice(nil)
 	if q.kind == "" {
-		if coll := s.GetCollection("ents:" + q.ns); coll != nil {
+		if coll := s.GetCollection("ents:" + q.kc.Namespace); coll != nil {
 			relevantIdxs = indexDefinitionSortableSlice{{coll: coll}}
 		}
 	} else {

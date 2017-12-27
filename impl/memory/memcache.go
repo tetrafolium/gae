@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -9,11 +19,13 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
+	"go.chromium.org/gae/service/info"
+	mc "go.chromium.org/gae/service/memcache"
 
-	mc "github.com/tetrafolium/gae/service/memcache"
-	"github.com/luci/luci-go/common/clock"
-	"github.com/luci/luci-go/common/errors"
+	"go.chromium.org/luci/common/clock"
+	"go.chromium.org/luci/common/errors"
+
+	"golang.org/x/net/context"
 )
 
 type mcItem struct {
@@ -76,7 +88,7 @@ func (m *mcDataItem) toUserItem(key string) *mcItem {
 }
 
 type memcacheData struct {
-	lock  sync.RWMutex
+	lock  sync.Mutex
 	items map[string]*mcDataItem
 	casID uint64
 
@@ -165,7 +177,7 @@ func useMC(c context.Context) context.Context {
 		lck.Lock()
 		defer lck.Unlock()
 
-		ns := curGID(ic).namespace
+		ns := info.GetNamespace(ic)
 		mcd, ok := mcdMap[ns]
 		if !ok {
 			mcd = &memcacheData{items: map[string]*mcDataItem{}}
@@ -256,8 +268,8 @@ func (m *memcacheImpl) GetMulti(keys []string, cb mc.RawItemCB) error {
 
 	for i, k := range keys {
 		itms[i], errs[i] = func() (mc.Item, error) {
-			m.data.lock.RLock()
-			defer m.data.lock.RUnlock()
+			m.data.lock.Lock()
+			defer m.data.lock.Unlock()
 			val, err := m.data.retrieveLocked(now, k)
 			if err != nil {
 				return nil, err
@@ -343,8 +355,8 @@ func (m *memcacheImpl) Increment(key string, delta int64, initialValue *uint64) 
 }
 
 func (m *memcacheImpl) Stats() (*mc.Statistics, error) {
-	m.data.lock.RLock()
-	defer m.data.lock.RUnlock()
+	m.data.lock.Lock()
+	defer m.data.lock.Unlock()
 
 	ret := m.data.stats
 	return &ret, nil

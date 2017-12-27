@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
@@ -8,8 +18,10 @@ import (
 	"math"
 	"testing"
 
-	. "github.com/luci/luci-go/common/testing/assertions"
+	"go.chromium.org/luci/common/sync/parallel"
+
 	. "github.com/smartystreets/goconvey/convey"
+	. "go.chromium.org/luci/common/testing/assertions"
 )
 
 const (
@@ -23,9 +35,9 @@ func TestDatastoreQueries(t *testing.T) {
 		Convey("can create good queries", func() {
 			q := NewQuery("Foo").Gt("farnsworth", 20).KeysOnly(true).Limit(10).Offset(39)
 
-			start := fakeCursor("hi")
+			start := fakeCursor(1337)
 
-			end := fakeCursor("end")
+			end := fakeCursor(24601)
 
 			q = q.Start(start).End(end)
 			So(q, ShouldNotBeNil)
@@ -60,8 +72,9 @@ type queryTest struct {
 	// gql is the expected generated GQL.
 	gql string
 
-	// err is the error to expect after prepping the query (error, string or nil)
-	err interface{}
+	// assertion is the error to expect after prepping the query, or nil if the
+	// error should be nil.
+	assertion func(err error)
 
 	// equivalentQuery is another query which ShouldResemble q. This is useful to
 	// see the effects of redundancy pruning on e.g. filters.
@@ -81,24 +94,35 @@ func nq(kinds ...string) *Query {
 }
 
 func mkKey(elems ...interface{}) *Key {
-	return MakeKey("s~aid", "ns", elems...)
+	return MkKeyContext("s~aid", "ns").MakeKey(elems...)
+}
+
+func errString(v string) func(error) {
+	return func(err error) {
+		So(err, ShouldErrLike, v)
+	}
+}
+
+func shouldBeErrInvalidKey(err error) {
+	So(IsErrInvalidKey(err), ShouldBeTrue)
 }
 
 var queryTests = []queryTest{
 	{"only one inequality",
 		nq().Order("bob", "wat").Gt("bob", 10).Lt("wat", 29),
 		"",
-		"inequality filters on multiple properties", nil},
+		errString("inequality filters on multiple properties"),
+		nil},
 
 	{"bad order",
 		nq().Order("+Bob"),
 		"",
-		"invalid order", nil},
+		errString("invalid order"), nil},
 
 	{"empty order",
 		nq().Order(""),
 		"",
-		"empty order", nil},
+		errString("empty order"), nil},
 
 	{"negative offset disables Offset",
 		nq().Offset(100).Offset(-20),
@@ -108,22 +132,22 @@ var queryTests = []queryTest{
 	{"projecting a keys-only query",
 		nq().Project("hello").KeysOnly(true),
 		"",
-		"cannot project a keysOnly query", nil},
+		errString("cannot project a keysOnly query"), nil},
 
 	{"projecting a keys-only query (reverse)",
 		nq().KeysOnly(true).Project("hello"),
 		"",
-		"cannot project a keysOnly query", nil},
+		errString("cannot project a keysOnly query"), nil},
 
 	{"projecting an empty field",
 		nq().Project("hello", ""),
 		"",
-		"cannot filter/project on: \"\"", nil},
+		errString("cannot filter/project on: \"\""), nil},
 
 	{"projecting __key__",
 		nq().Project("hello", "__key__"),
 		"",
-		"cannot project on \"__key__\"", nil},
+		errString("cannot project on \"__key__\""), nil},
 
 	{"getting all the keys",
 		nq("").KeysOnly(true),
@@ -153,7 +177,7 @@ var queryTests = []queryTest{
 	{"bad ancestors",
 		nq().Ancestor(mkKey("goop", 0)),
 		"",
-		ErrInvalidKey, nil},
+		shouldBeErrInvalidKey, nil},
 
 	{"nil ancestors",
 		nq().Ancestor(nil),
@@ -163,57 +187,57 @@ var queryTests = []queryTest{
 	{"Bad key filters",
 		nq().Gt("__key__", mkKey("goop", 0)),
 		"",
-		ErrInvalidKey, nil},
+		shouldBeErrInvalidKey, nil},
 
 	{"filters for __key__ that aren't keys",
 		nq().Gt("__key__", 10),
 		"",
-		"filters on \"__key__\" must have type *Key", nil},
+		errString("filters on \"__key__\" must have type *Key"), nil},
 
 	{"multiple inequalities",
 		nq().Gt("bob", 19).Lt("charlie", 20),
 		"",
-		"inequality filters on multiple properties", nil},
+		errString("inequality filters on multiple properties"), nil},
 
 	{"inequality must be first sort order",
 		nq().Gt("bob", 19).Order("-charlie"),
 		"",
-		"first sort order", nil},
+		errString("first sort order"), nil},
 
 	{"inequality must be first sort order (reverse)",
 		nq().Order("-charlie").Gt("bob", 19),
 		"",
-		"first sort order", nil},
+		errString("first sort order"), nil},
 
 	{"equality filter projected field",
 		nq().Project("foo").Eq("foo", 10),
 		"",
-		"cannot project", nil},
+		errString("cannot project"), nil},
 
 	{"equality filter projected field (reverse)",
 		nq().Eq("foo", 10).Project("foo"),
 		"",
-		"cannot project", nil},
+		errString("cannot project"), nil},
 
 	{"kindless with non-__key__ filters",
 		nq("").Lt("face", 25.3),
 		"",
-		"kindless queries can only filter on __key__", nil},
+		errString("kindless queries can only filter on __key__"), nil},
 
 	{"kindless with non-__key__ orders",
 		nq("").Order("face"),
 		"",
-		"invalid order for kindless query", nil},
+		errString("invalid order for kindless query"), nil},
 
 	{"kindless with descending-__key__ order",
 		nq("").Order("-__key__"),
 		"",
-		"invalid order for kindless query", nil},
+		errString("invalid order for kindless query"), nil},
 
 	{"kindless with equality filters",
 		nq("").Eq("hello", 1),
 		"",
-		"may not have any equality", nil},
+		errString("may not have any equality"), nil},
 
 	{"kindless with ancestor filter",
 		nq("").Ancestor(mkKey("Parent", 1)),
@@ -233,7 +257,7 @@ var queryTests = []queryTest{
 	{"chained errors return the first",
 		nq().Eq("__reserved__", 100).Eq("hello", "wurld").Order(""),
 		"",
-		"__reserved__", nil},
+		errString("__reserved__"), nil},
 
 	{"multiple ancestors",
 		nq().Ancestor(mkKey("something", "correct")).Ancestor(mkKey("something", "else")),
@@ -245,7 +269,7 @@ var queryTests = []queryTest{
 	{"filter with illegal type",
 		nq().Eq("something", complex(1, 2)),
 		"",
-		"bad type complex", nil},
+		errString("bad type complex"), nil},
 
 	{"sort orders used for equality are ignored",
 		nq().Order("a", "b", "c").Eq("b", 2, 2),
@@ -273,7 +297,7 @@ var queryTests = []queryTest{
 	{"Filtering on a reserved property is forbidden",
 		nq().Gte("__special__", 10),
 		"",
-		"cannot filter/project on reserved property: \"__special__\"",
+		errString("cannot filter/project on reserved property: \"__special__\""),
 		nil},
 
 	{"in-bound key filters with ancestor OK",
@@ -299,17 +323,20 @@ var queryTests = []queryTest{
 	{"ineq on __key__ with ancestor must be an ancestor of __ancestor__!",
 		nq().Ancestor(mkKey("Hello", 10)).Lt("__key__", mkKey("Hello", 8)),
 		"",
-		"inequality filters on __key__ must be descendants of the __ancestor__", nil},
+		errString("inequality filters on __key__ must be descendants of the __ancestor__"),
+		nil},
 
 	{"ineq on __key__ with ancestor must be an ancestor of __ancestor__! (2)",
 		nq().Ancestor(mkKey("Hello", 10)).Gt("__key__", mkKey("Hello", 8)),
 		"",
-		"inequality filters on __key__ must be descendants of the __ancestor__", nil},
+		errString("inequality filters on __key__ must be descendants of the __ancestor__"),
+		nil},
 
 	{"can build an empty query",
 		nq().Lt("hello", 10).Gt("hello", 50),
 		"",
-		ErrNullQuery, nil},
+		func(err error) { So(err, ShouldEqual, ErrNullQuery) },
+		nil},
 }
 
 func TestQueries(t *testing.T) {
@@ -320,9 +347,13 @@ func TestQueries(t *testing.T) {
 			Convey(tc.name, func() {
 				fq, err := tc.q.Finalize()
 				if err == nil {
-					err = fq.Valid("s~aid", "ns")
+					err = fq.Valid(MkKeyContext("s~aid", "ns"))
 				}
-				So(err, ShouldErrLike, tc.err)
+				if tc.assertion != nil {
+					tc.assertion(err)
+				} else {
+					So(err, ShouldBeNil)
+				}
 
 				if tc.gql != "" {
 					So(fq.GQL(), ShouldEqual, tc.gql)
@@ -338,5 +369,41 @@ func TestQueries(t *testing.T) {
 				}
 			})
 		}
+	})
+}
+
+func TestQueryConcurrencySafety(t *testing.T) {
+	t.Parallel()
+
+	Convey("query and derivative query finalization is goroutine-safe", t, func() {
+		const rounds = 10
+
+		q := NewQuery("Foo")
+
+		err := parallel.FanOutIn(func(outerC chan<- func() error) {
+
+			for i := 0; i < rounds; i++ {
+				outerQ := q.Gt("Field", i)
+
+				// Finalize the original query.
+				outerC <- func() error {
+					_, err := q.Finalize()
+					return err
+				}
+
+				// Finalize the derivative query a lot.
+				outerC <- func() error {
+					return parallel.FanOutIn(func(innerC chan<- func() error) {
+						for i := 0; i < rounds; i++ {
+							innerC <- func() error {
+								_, err := outerQ.Finalize()
+								return err
+							}
+						}
+					})
+				}
+			}
+		})
+		So(err, ShouldBeNil)
 	})
 }

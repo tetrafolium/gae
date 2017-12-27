@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -15,7 +25,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/tetrafolium/gae/service/user"
+	"go.chromium.org/gae/service/user"
 )
 
 type userData struct {
@@ -28,14 +38,14 @@ type userImpl struct {
 	data *userData
 }
 
-var _ user.Interface = (*userImpl)(nil)
+var _ user.RawInterface = (*userImpl)(nil)
 
-// useUser adds a user.Interface implementation to context, accessible
-// by user.Get(c)
+// useUser adds a user.RawInterface implementation to context, accessible
+// by user.Raw(c) or the exported user methods.
 func useUser(c context.Context) context.Context {
 	data := &userData{}
 
-	return user.SetFactory(c, func(ic context.Context) user.Interface {
+	return user.SetFactory(c, func(ic context.Context) user.RawInterface {
 		return &userImpl{data}
 	})
 }
@@ -83,9 +93,7 @@ func (u *userImpl) OAuthConsumerKey() (string, error) {
 	return "", fmt.Errorf("OAuthConsumerKey is deprecated")
 }
 
-func (u *userImpl) Testable() user.Testable {
-	return u
-}
+func (u *userImpl) GetTestable() user.Testable { return u }
 
 func (u *userImpl) SetUser(user *user.User) {
 	u.data.Lock()

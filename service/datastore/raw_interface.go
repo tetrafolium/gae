@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
@@ -33,24 +43,69 @@ type RawRunCB func(key *Key, val PropertyMap, getCursor CursorCB) error
 
 // GetMultiCB is the callback signature provided to RawInterface.GetMulti
 //
+//   - idx is the index of the entity, ranging from 0 through len-1.
 //   - val is the data of the entity
 //     * It may be nil if some of the keys to the GetMulti were bad, since all
 //       keys are validated before the RPC occurs!
 //   - err is an error associated with this entity (e.g. ErrNoSuchEntity).
-type GetMultiCB func(val PropertyMap, err error) error
-
-// PutMultiCB is the callback signature provided to RawInterface.PutMulti
 //
+// The callback is called once per element. It may be called concurrently, and
+// may be called out of order. The "idx" variable describes which element is
+// being processed. If any callbacks are invoked, exactly one callback will be
+// invoked for each supplied element.
+//
+// Return nil to continue iterating, or an error to stop. If you return the
+// error `Stop`, then GetMulti will stop the query and return nil.
+type GetMultiCB func(idx int, val PropertyMap, err error) error
+
+// NewKeyCB is the callback signature provided to RawInterface.PutMulti and
+// RawInterface.AllocateIDs. It is invoked once for each positional key that
+// was generated as the result of a call.
+//
+//   - idx is the index of the entity, ranging from 0 through len-1.
 //   - key is the new key for the entity (if the original was incomplete)
 //     * It may be nil if some of the keys/vals to the PutMulti were bad, since
 //       all keys are validated before the RPC occurs!
 //   - err is an error associated with putting this entity.
-type PutMultiCB func(key *Key, err error) error
+//
+// The callback is called once per element. It may be called concurrently, and
+// may be called out of order. The "idx" variable describes which element is
+// being processed. If any callbacks are invoked, exactly one callback will be
+// invoked for each supplied element.
+//
+// Return nil to continue iterating, or an error to stop. If you return the
+// error `Stop`, then PutMulti will stop the query and return nil.
+type NewKeyCB func(idx int, key *Key, err error) error
 
 // DeleteMultiCB is the callback signature provided to RawInterface.DeleteMulti
 //
+//   - idx is the index of the entity, ranging from 0 through len-1.
 //   - err is an error associated with deleting this entity.
-type DeleteMultiCB func(err error) error
+//
+// The callback is called once per element. It may be called concurrently, and
+// may be called out of order. The "idx" variable describes which element is
+// being processed. If any callbacks are invoked, exactly one callback will be
+// invoked for each supplied element.
+//
+// Return nil to continue iterating, or an error to stop. If you return the
+// error `Stop`, then DeleteMulti will stop the query and return nil.
+type DeleteMultiCB func(idx int, err error) error
+
+// Constraints represent implementation constraints.
+//
+// A zero-value Constraints is valid, and indicates that no constraints are
+// present.
+type Constraints struct {
+	// MaxGetSize is the maximum number of entities that can be referenced in a
+	// single GetMulti call. If <= 0, no constraint is applied.
+	MaxGetSize int
+	// MaxPutSize is the maximum number of entities that can be referenced in a
+	// single PutMulti call. If <= 0, no constraint is applied.
+	MaxPutSize int
+	// MaxDeleteSize is the maximum number of entities that can be referenced in a
+	// single DeleteMulti call. If <= 0, no constraint is applied.
+	MaxDeleteSize int
+}
 
 type nullMetaGetterType struct{}
 
@@ -96,12 +151,12 @@ func (m MultiMetaGetter) GetSingle(idx int) MetaGetter {
 // reflection work. See datastore.Interface for a more user-friendly interface.
 type RawInterface interface {
 	// AllocateIDs allows you to allocate IDs from the datastore without putting
-	// any data. `incomplete` must be a PartialValid Key. If there's no error,
-	// a contiguous block of IDs of n length starting at `start` will be reserved
-	// indefinitely for the user application code for use in new keys. The
-	// appengine automatic ID generator will never automatically assign these IDs
-	// for Keys of this type.
-	AllocateIDs(incomplete *Key, n int) (start int64, err error)
+	// any data. The supplied keys must be PartialValid and share the same entity
+	// type.
+	//
+	// If there's no error, the keys in the slice will be replaced with keys
+	// containing integer IDs assigned to them.
+	AllocateIDs(keys []*Key, cb NewKeyCB) error
 
 	// RunInTransaction runs f in a transaction.
 	//
@@ -129,9 +184,11 @@ type RawInterface interface {
 
 	// GetMulti retrieves items from the datastore.
 	//
-	// Callback execues once per key, in the order of keys. Callback may not
-	// execute at all if there's a server error. If callback is nil, this
-	// method does nothing.
+	// If there was a server error, it will be returned directly. Otherwise,
+	// callback will execute once per key/value pair, returning either the
+	// operation result or individual error for each position. If the callback
+	// receives an error, it will immediately forward that error and stop
+	// subsequent callbacks.
 	//
 	// meta is used to propagate metadata from higher levels.
 	//
@@ -143,20 +200,26 @@ type RawInterface interface {
 
 	// PutMulti writes items to the datastore.
 	//
-	// Callback execues once per key/value pair, in the passed-in order. Callback
-	// may not execute at all if there was a server error.
+	// If there was a server error, it will be returned directly. Otherwise,
+	// callback will execute once per key/value pair, returning either the
+	// operation result or individual error for each position. If the callback
+	// receives an error, it will immediately forward that error and stop
+	// subsequent callbacks.
 	//
 	// NOTE: Implementations and filters are guaranteed that:
 	//   - len(keys) > 0
 	//   - len(keys) == len(vals)
 	//   - all keys are Valid and in the current namespace
 	//   - cb is not nil
-	PutMulti(keys []*Key, vals []PropertyMap, cb PutMultiCB) error
+	PutMulti(keys []*Key, vals []PropertyMap, cb NewKeyCB) error
 
 	// DeleteMulti removes items from the datastore.
 	//
-	// Callback execues once per key, in the order of keys. Callback may not
-	// execute at all if there's a server error.
+	// If there was a server error, it will be returned directly. Otherwise,
+	// callback will execute once per key/value pair, returning either the
+	// operation result or individual error for each position. If the callback
+	// receives an error, it will immediately forward that error and stop
+	// subsequent callbacks.
 	//
 	// NOTE: Implementations and filters are guaranteed that
 	//   - len(keys) > 0
@@ -165,7 +228,19 @@ type RawInterface interface {
 	//   - cb is not nil
 	DeleteMulti(keys []*Key, cb DeleteMultiCB) error
 
-	// Testable returns the Testable interface for the implementation, or nil if
-	// there is none.
-	Testable() Testable
+	// WithoutTransaction returns a derived Context without a transaction applied.
+	// This may be called even when outside of a transaction, in which case the
+	// input Context is a valid return value.
+	WithoutTransaction() context.Context
+
+	// CurrentTransaction returns a reference to the current Transaction, or nil
+	// if the Context does not have a current Transaction.
+	CurrentTransaction() Transaction
+
+	// Constraints returns this implementation's constraints.
+	Constraints() Constraints
+
+	// GetTestable returns the Testable interface for the implementation, or nil
+	// if there is none.
+	GetTestable() Testable
 }

@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -10,14 +20,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tetrafolium/gae/service/blobstore"
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/info"
+	"go.chromium.org/gae/service/blobstore"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/info"
 	"golang.org/x/net/context"
 
-	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
+	. "go.chromium.org/luci/common/testing/assertions"
 )
+
+func mkKey(appID, namespace string, elems ...interface{}) *ds.Key {
+	return ds.MkKeyContext(appID, namespace).MakeKey(elems...)
+}
 
 type qExpect struct {
 	q     *ds.Query
@@ -85,6 +99,8 @@ var stage2Data = []ds.PropertyMap{
 		"Val", 3, 4, 2, 1, Next,
 		"Extra", "nuts",
 	),
+	pmap("$key", mkKey("dev~app", "", "Kind", "id")),
+	pmap("$key", mkKey("dev~app", "bob", "Kind", "id")),
 }
 
 var collapsedData = []ds.PropertyMap{
@@ -146,6 +162,11 @@ var queryExecutionTests = []qExTest{
 				{q: nq("Child").Ancestor(key("Kind", 3)), keys: []*ds.Key{
 					key("Kind", 3, "Child", "seven"),
 				}, inTxn: true},
+				{q: nq("__namespace__"), get: []ds.PropertyMap{
+					pmap("$key", mkKey("dev~app", "", "__namespace__", "ns")),
+				}},
+				{q: nq("__namespace__").Offset(1), get: []ds.PropertyMap{}},
+				{q: nq("__namespace__").Offset(1).Limit(1), get: []ds.PropertyMap{}},
 			},
 		},
 
@@ -343,16 +364,33 @@ var queryExecutionTests = []qExTest{
 					stage1Data[3],
 					stage1Data[2],
 				}},
+				{q: nq("__namespace__"), get: []ds.PropertyMap{
+					pmap("$key", mkKey("dev~app", "", "__namespace__", 1)),
+					pmap("$key", mkKey("dev~app", "", "__namespace__", "bob")),
+					pmap("$key", mkKey("dev~app", "", "__namespace__", "ns")),
+				}},
+				{q: nq("__namespace__").Offset(1), get: []ds.PropertyMap{
+					pmap("$key", mkKey("dev~app", "", "__namespace__", "bob")),
+					pmap("$key", mkKey("dev~app", "", "__namespace__", "ns")),
+				}},
+				{q: nq("__namespace__").Offset(1).Limit(1), get: []ds.PropertyMap{
+					pmap("$key", mkKey("dev~app", "", "__namespace__", "bob")),
+				}},
+				//
+				// eventual consistency; Unique/1 is deleted at HEAD. Keysonly finds it,
+				// but 'normal' doesn't.
+				{q: nq("Unique").Gt("__key__", key("AKind", 5)).Lte("__key__", key("Zeta", "prime")),
+					keys: []*ds.Key{key("Unique", 1)},
+					get:  []ds.PropertyMap{}},
 			},
 
 			extraFns: []func(context.Context){
 				func(c context.Context) {
-					data := ds.Get(c)
 					curs := ds.Cursor(nil)
 
 					q := nq("").Gt("__key__", key("Kind", 2))
 
-					err := data.Run(q, func(pm ds.PropertyMap, gc ds.CursorCB) error {
+					err := ds.Run(c, q, func(pm ds.PropertyMap, gc ds.CursorCB) error {
 						So(pm, ShouldResemble, pmap(
 							"$key", key("Kind", 2, "__entity_group__", 1), Next,
 							"__version__", 1))
@@ -362,19 +400,18 @@ var queryExecutionTests = []qExTest{
 						So(err, ShouldBeNil)
 						return ds.Stop
 					})
-					So(err, ShouldBeNil)
+					So(err, shouldBeSuccessful)
 
-					err = data.Run(q.Start(curs), func(pm ds.PropertyMap) error {
+					err = ds.Run(c, q.Start(curs), func(pm ds.PropertyMap) error {
 						So(pm, ShouldResemble, stage1Data[2])
 						return ds.Stop
 					})
-					So(err, ShouldBeNil)
+					So(err, shouldBeSuccessful)
 				},
 
 				func(c context.Context) {
-					data := ds.Get(c)
 					q := nq("Something").Eq("Does", 2).Order("Not", "-Work")
-					So(data.Run(q, func(ds.Key) {}), ShouldErrLike, strings.Join([]string{
+					So(ds.Run(c, q, func(ds.Key) {}), ShouldErrLike, strings.Join([]string{
 						"Consider adding:",
 						"- kind: Something",
 						"  properties:",
@@ -386,9 +423,8 @@ var queryExecutionTests = []qExTest{
 				},
 
 				func(c context.Context) {
-					data := ds.Get(c)
 					q := nq("Something").Ancestor(key("Kind", 3)).Order("Val")
-					So(data.Run(q, func(ds.Key) {}), ShouldErrLike, strings.Join([]string{
+					So(ds.Run(c, q, func(ds.Key) {}), ShouldErrLike, strings.Join([]string{
 						"Consider adding:",
 						"- kind: Something",
 						"  ancestor: yes",
@@ -401,18 +437,13 @@ var queryExecutionTests = []qExTest{
 
 		{
 			expect: []qExpect{
-				// eventual consistency; Unique/1 is deleted at HEAD. Keysonly finds it,
-				// but 'normal' doesn't.
-				{q: nq("Unique").Gt("__key__", key("AKind", 5)).Lte("__key__", key("Zeta", "prime")),
-					keys: []*ds.Key{key("Unique", 1)},
-					get:  []ds.PropertyMap{}},
-
 				{q: nq("Kind").Eq("Val", 1, 3), get: []ds.PropertyMap{
 					stage1Data[0], stage2Data[2],
 				}},
 			},
 		},
 	}},
+
 	{"collapsed types", []qExStage{
 		{
 			putEnts: collapsedData,
@@ -463,22 +494,71 @@ var queryExecutionTests = []qExTest{
 			},
 		},
 	}},
+
+	{"regression: tombstones and limit/offset queries", []qExStage{
+		{
+			putEnts: []ds.PropertyMap{
+				pmap("$key", key("Kind", 1)),
+				pmap("$key", key("Kind", 2)),
+				pmap("$key", key("Kind", 3)),
+			},
+			delEnts: []*ds.Key{key("Kind", 2)},
+		},
+		{
+			expect: []qExpect{
+				{
+					q: nq("Kind").Limit(2),
+					get: []ds.PropertyMap{
+						pmap("$key", key("Kind", 1)),
+						pmap("$key", key("Kind", 3)),
+					},
+				},
+
+				{
+					q:   nq("Kind").Offset(2),
+					get: []ds.PropertyMap{},
+				},
+			},
+		},
+	}},
+
+	{"regression: avoid index bleedover for common fields in compound indices", []qExStage{
+		{
+			addIdxs: []*ds.IndexDefinition{
+				indx("Kind", "A", "B"),
+				indx("Other", "A", "B"),
+			},
+			putEnts: []ds.PropertyMap{
+				pmap(
+					"$key", key("Kind", 1), Next,
+					"A", "value", Next,
+					"B", "value", Next),
+			},
+		},
+		{
+			expect: []qExpect{
+				{
+					q:   nq("Other").Eq("A", "value").Order("B"),
+					get: []ds.PropertyMap{},
+				},
+			},
+		},
+	}},
 }
 
 func TestQueryExecution(t *testing.T) {
 	t.Parallel()
 
 	Convey("Test query execution", t, func() {
-		c, err := info.Get(Use(context.Background())).Namespace("ns")
+		c, err := info.Namespace(Use(context.Background()), "ns")
 		if err != nil {
 			panic(err)
 		}
 
-		So(info.Get(c).FullyQualifiedAppID(), ShouldEqual, "dev~app")
-		So(info.Get(c).GetNamespace(), ShouldEqual, "ns")
+		So(info.FullyQualifiedAppID(c), ShouldEqual, "dev~app")
+		So(info.GetNamespace(c), ShouldEqual, "ns")
 
-		data := ds.Get(c)
-		testing := data.Testable()
+		testing := ds.GetTestable(c)
 
 		for _, tc := range queryExecutionTests {
 			Convey(tc.name, func() {
@@ -487,23 +567,31 @@ func TestQueryExecution(t *testing.T) {
 					testing.CatchupIndexes()
 
 					testing.AddIndexes(stage.addIdxs...)
-					if err := data.PutMulti(stage.putEnts); err != nil {
-						// prevent Convey from thinking this assertion should show up in
-						// every test loop.
-						panic(err)
+					byNs := map[string][]ds.PropertyMap{}
+					for _, ent := range stage.putEnts {
+						k := ds.GetMetaDefault(ent, "key", nil).(*ds.Key)
+						byNs[k.Namespace()] = append(byNs[k.Namespace()], ent)
+					}
+					for ns, ents := range byNs {
+						c := info.MustNamespace(c, ns)
+						if err := ds.Put(c, ents); err != nil {
+							// prevent Convey from thinking this assertion should show up in
+							// every test loop.
+							panic(err)
+						}
 					}
 
-					if err := data.DeleteMulti(stage.delEnts); err != nil {
+					if err := ds.Delete(c, stage.delEnts); err != nil {
 						panic(err)
 					}
 
 					Convey(fmt.Sprintf("stage %d", i), func() {
 						for j, expect := range stage.expect {
-							runner := func(f func(ic context.Context) error, _ *ds.TransactionOptions) error {
+							runner := func(c context.Context, f func(ic context.Context) error, _ *ds.TransactionOptions) error {
 								return f(c)
 							}
 							if expect.inTxn {
-								runner = data.RunInTransaction
+								runner = ds.RunInTransaction
 							}
 
 							if expect.count == 0 {
@@ -516,41 +604,39 @@ func TestQueryExecution(t *testing.T) {
 
 							if expect.keys != nil {
 								Convey(fmt.Sprintf("expect %d (keys)", j), func() {
-									err := runner(func(c context.Context) error {
-										data := ds.Get(c)
-										count, err := data.Count(expect.q)
-										So(err, ShouldBeNil)
+									err := runner(c, func(c context.Context) error {
+										count, err := ds.Count(c, expect.q)
+										So(err, shouldBeSuccessful)
 										So(count, ShouldEqual, expect.count)
 
 										rslt := []*ds.Key(nil)
-										So(data.GetAll(expect.q, &rslt), ShouldBeNil)
+										So(ds.GetAll(c, expect.q, &rslt), shouldBeSuccessful)
 										So(len(rslt), ShouldEqual, len(expect.keys))
 										for i, r := range rslt {
 											So(r, ShouldResemble, expect.keys[i])
 										}
 										return nil
 									}, &ds.TransactionOptions{XG: true})
-									So(err, ShouldBeNil)
+									So(err, shouldBeSuccessful)
 								})
 							}
 
 							if expect.get != nil {
 								Convey(fmt.Sprintf("expect %d (data)", j), func() {
-									err := runner(func(c context.Context) error {
-										data := ds.Get(c)
-										count, err := data.Count(expect.q)
-										So(err, ShouldBeNil)
+									err := runner(c, func(c context.Context) error {
+										count, err := ds.Count(c, expect.q)
+										So(err, shouldBeSuccessful)
 										So(count, ShouldEqual, expect.count)
 
 										rslt := []ds.PropertyMap(nil)
-										So(data.GetAll(expect.q, &rslt), ShouldBeNil)
+										So(ds.GetAll(c, expect.q, &rslt), shouldBeSuccessful)
 										So(len(rslt), ShouldEqual, len(expect.get))
 										for i, r := range rslt {
 											So(r, ShouldResemble, expect.get[i])
 										}
 										return nil
 									}, &ds.TransactionOptions{XG: true})
-									So(err, ShouldBeNil)
+									So(err, shouldBeSuccessful)
 								})
 							}
 						}
@@ -567,34 +653,51 @@ func TestQueryExecution(t *testing.T) {
 	})
 
 	Convey("Test AutoIndex", t, func() {
-		c, err := info.Get(Use(context.Background())).Namespace("ns")
+		c, err := info.Namespace(Use(context.Background()), "ns")
 		if err != nil {
 			panic(err)
 		}
 
-		data := ds.Get(c)
-		testing := data.Testable()
+		testing := ds.GetTestable(c)
 		testing.Consistent(true)
 
-		So(data.Put(pmap("$key", key("Kind", 1), Next,
+		So(ds.Put(c, pmap("$key", key("Kind", 1), Next,
 			"Val", 1, 2, 3, Next,
 			"Extra", "hello",
-		)), ShouldBeNil)
+		)), shouldBeSuccessful)
 
-		So(data.Put(pmap("$key", key("Kind", 2), Next,
+		So(ds.Put(c, pmap("$key", key("Kind", 2), Next,
 			"Val", 2, 3, 9, Next,
 			"Extra", "ace", "hello", "there",
-		)), ShouldBeNil)
+		)), shouldBeSuccessful)
 
 		q := nq("Kind").Gt("Val", 2).Order("Val", "Extra")
 
-		count, err := data.Count(q)
+		count, err := ds.Count(c, q)
 		So(err, ShouldErrLike, "Insufficient indexes")
 
 		testing.AutoIndex(true)
 
-		count, err = data.Count(q)
-		So(err, ShouldBeNil)
+		count, err = ds.Count(c, q)
+		So(err, shouldBeSuccessful)
 		So(count, ShouldEqual, 2)
 	})
+}
+
+func shouldBeSuccessful(actual interface{}, expected ...interface{}) string {
+	if len(expected) != 0 {
+		return "no expected values permitted"
+	}
+	if actual == nil {
+		return ""
+	}
+
+	v, ok := actual.(error)
+	if !ok {
+		return fmt.Sprintf("type of 'actual' must be error, not %T", actual)
+	}
+	if v == nil || v == ds.Stop {
+		return ""
+	}
+	return fmt.Sprintf("expected success value, not %v", v)
 }

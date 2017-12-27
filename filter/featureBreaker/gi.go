@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package featureBreaker
 
@@ -9,66 +19,59 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/tetrafolium/gae/service/info"
+	"go.chromium.org/gae/service/info"
 )
 
 type infoState struct {
 	*state
 
-	info.Interface
+	c context.Context
+	info.RawInterface
 }
 
 func (g *infoState) ModuleHostname(module, version, instance string) (ret string, err error) {
-	err = g.run(func() (err error) {
-		ret, err = g.Interface.ModuleHostname(module, version, instance)
+	err = g.run(g.c, func() (err error) {
+		ret, err = g.RawInterface.ModuleHostname(module, version, instance)
 		return
 	})
 	return
 }
 
 func (g *infoState) ServiceAccount() (ret string, err error) {
-	err = g.run(func() (err error) {
-		ret, err = g.Interface.ServiceAccount()
+	err = g.run(g.c, func() (err error) {
+		ret, err = g.RawInterface.ServiceAccount()
 		return
 	})
 	return
 }
 
-func (g *infoState) Namespace(namespace string) (ret context.Context, err error) {
-	err = g.run(func() (err error) {
-		ret, err = g.Interface.Namespace(namespace)
+func (g *infoState) Namespace(namespace string) (c context.Context, err error) {
+	err = g.run(g.c, func() (err error) {
+		c, err = g.RawInterface.Namespace(namespace)
 		return
 	})
 	return
-}
-
-func (g *infoState) MustNamespace(namespace string) context.Context {
-	ret, err := g.Namespace(namespace)
-	if err != nil {
-		panic(err)
-	}
-	return ret
 }
 
 func (g *infoState) AccessToken(scopes ...string) (token string, expiry time.Time, err error) {
-	err = g.run(func() (err error) {
-		token, expiry, err = g.Interface.AccessToken(scopes...)
+	err = g.run(g.c, func() (err error) {
+		token, expiry, err = g.RawInterface.AccessToken(scopes...)
 		return
 	})
 	return
 }
 
 func (g *infoState) PublicCertificates() (ret []info.Certificate, err error) {
-	err = g.run(func() (err error) {
-		ret, err = g.Interface.PublicCertificates()
+	err = g.run(g.c, func() (err error) {
+		ret, err = g.RawInterface.PublicCertificates()
 		return
 	})
 	return
 }
 
 func (g *infoState) SignBytes(bytes []byte) (keyName string, signature []byte, err error) {
-	err = g.run(func() (err error) {
-		keyName, signature, err = g.Interface.SignBytes(bytes)
+	err = g.run(g.c, func() (err error) {
+		keyName, signature, err = g.RawInterface.SignBytes(bytes)
 		return
 	})
 	return
@@ -77,7 +80,7 @@ func (g *infoState) SignBytes(bytes []byte) (keyName string, signature []byte, e
 // FilterGI installs a featureBreaker info filter in the context.
 func FilterGI(c context.Context, defaultError error) (context.Context, FeatureBreaker) {
 	state := newState(defaultError)
-	return info.AddFilters(c, func(ic context.Context, i info.Interface) info.Interface {
-		return &infoState{state, i}
+	return info.AddFilters(c, func(ic context.Context, i info.RawInterface) info.RawInterface {
+		return &infoState{state, ic, i}
 	}), state
 }

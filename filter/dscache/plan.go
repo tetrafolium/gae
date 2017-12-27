@@ -1,17 +1,26 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package dscache
 
 import (
 	"bytes"
 
-	ds "github.com/tetrafolium/gae/service/datastore"
-	mc "github.com/tetrafolium/gae/service/memcache"
-	"github.com/luci/luci-go/common/errors"
-	"github.com/luci/luci-go/common/logging"
-	"golang.org/x/net/context"
+	ds "go.chromium.org/gae/service/datastore"
+	mc "go.chromium.org/gae/service/memcache"
+	"go.chromium.org/luci/common/errors"
+	"go.chromium.org/luci/common/logging"
 )
 
 type facts struct {
@@ -88,7 +97,7 @@ func (p *plan) empty() bool {
 //
 // Or some combination thereof. This also handles memcache enries with invalid
 // data in them, cases where items have caching disabled entirely, etc.
-func makeFetchPlan(c context.Context, aid, ns string, f *facts) *plan {
+func (d *dsCache) makeFetchPlan(f *facts) *plan {
 	p := plan{
 		keepMeta: f.getMeta != nil,
 		decoded:  make([]ds.PropertyMap, len(f.lockItems)),
@@ -116,14 +125,14 @@ func makeFetchPlan(c context.Context, aid, ns string, f *facts) *plan {
 			}
 
 		case ItemHasData:
-			pmap, err := decodeItemValue(lockItm.Value(), aid, ns)
+			pmap, err := decodeItemValue(lockItm.Value(), d.KeyContext)
 			switch err {
 			case nil:
 				p.decoded[i] = pmap
 			case ds.ErrNoSuchEntity:
 				p.lme.Assign(i, ds.ErrNoSuchEntity)
 			default:
-				(logging.Fields{"error": err}).Warningf(c,
+				(logging.Fields{"error": err}).Warningf(d.c,
 					"dscache: error decoding %s, %s", lockItm.Key(), getKey)
 				p.add(i, getKey, m, nil)
 			}

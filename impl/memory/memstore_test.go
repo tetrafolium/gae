@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -95,28 +105,28 @@ var testCollisionCases = []struct {
 	},
 }
 
-func getFilledColl(s *memStore, fill []kv) *memCollection {
+func getFilledColl(fill []kv) memCollection {
 	if fill == nil {
 		return nil
 	}
-	ret := s.MakePrivateCollection(nil)
+	store := newMemStore()
+	ret := store.GetOrCreateCollection("")
 	for _, i := range fill {
 		ret.Set(i.k, i.v)
 	}
-	return ret
+	return store.Snapshot().GetCollection("")
 }
 
 func TestCollision(t *testing.T) {
 	t.Parallel()
 
-	Convey("Test gkvCollide", t, func() {
-		s := newMemStore()
+	Convey("Test memStoreCollide", t, func() {
 		for _, tc := range testCollisionCases {
 			Convey(tc.name, func() {
-				left := getFilledColl(s, tc.left)
-				right := getFilledColl(s, tc.right)
+				left := getFilledColl(tc.left)
+				right := getFilledColl(tc.right)
 				i := 0
-				gkvCollide(left, right, func(key, left, right []byte) {
+				memStoreCollide(left, right, func(key, left, right []byte) {
 					e := tc.expect[i]
 					So(key, ShouldResemble, e.key)
 					So(left, ShouldResemble, e.left)

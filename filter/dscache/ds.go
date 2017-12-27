@@ -1,16 +1,28 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package dscache
 
 import (
 	"time"
 
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/memcache"
-	"github.com/luci/luci-go/common/errors"
-	log "github.com/luci/luci-go/common/logging"
+	ds "go.chromium.org/gae/service/datastore"
+	mc "go.chromium.org/gae/service/memcache"
+
+	"go.chromium.org/luci/common/errors"
+	log "go.chromium.org/luci/common/logging"
+
 	"golang.org/x/net/context"
 )
 
@@ -28,7 +40,7 @@ func (d *dsCache) DeleteMulti(keys []*ds.Key, cb ds.DeleteMultiCB) error {
 	})
 }
 
-func (d *dsCache) PutMulti(keys []*ds.Key, vals []ds.PropertyMap, cb ds.PutMultiCB) error {
+func (d *dsCache) PutMulti(keys []*ds.Key, vals []ds.PropertyMap, cb ds.NewKeyCB) error {
 	return d.mutation(keys, func() error {
 		return d.RawInterface.PutMulti(keys, vals, cb)
 	})
@@ -40,28 +52,26 @@ func (d *dsCache) GetMulti(keys []*ds.Key, metas ds.MultiMetaGetter, cb ds.GetMu
 		return d.RawInterface.GetMulti(keys, metas, cb)
 	}
 
-	if err := d.mc.AddMulti(lockItems); err != nil {
+	if err := mc.Add(d.c, lockItems...); err != nil {
 		// Ignore this error. Either we couldn't add them because they exist
 		// (so, not an issue), or because memcache is having sad times (in which
-		// case we'll see so in the GetMulti which immediately follows this).
+		// case we'll see so in the Get which immediately follows this).
 	}
-	if err := errors.Filter(d.mc.GetMulti(lockItems), memcache.ErrCacheMiss); err != nil {
-		(log.Fields{log.ErrorKey: err}).Warningf(
-			d.c, "dscache: GetMulti: memcache.GetMulti")
+	if err := errors.Filter(mc.Get(d.c, lockItems...), mc.ErrCacheMiss); err != nil {
+		(log.Fields{log.ErrorKey: err}).Debugf(
+			d.c, "dscache: GetMulti: memcache.Get")
 	}
 
-	p := makeFetchPlan(d.c, d.aid, d.ns, &facts{keys, metas, lockItems, nonce})
+	p := d.makeFetchPlan(&facts{keys, metas, lockItems, nonce})
 
 	if !p.empty() {
 		// looks like we have something to pull from datastore, and maybe some work
 		// to save stuff back to memcache.
 
-		toCas := []memcache.Item{}
-		j := 0
-		err := d.RawInterface.GetMulti(p.toGet, p.toGetMeta, func(pm ds.PropertyMap, err error) error {
+		toCas := []mc.Item{}
+		err := d.RawInterface.GetMulti(p.toGet, p.toGetMeta, func(j int, pm ds.PropertyMap, err error) error {
 			i := p.idxMap[j]
 			toSave := p.toSave[j]
-			j++
 
 			data := []byte(nil)
 
@@ -109,9 +119,9 @@ func (d *dsCache) GetMulti(keys []*ds.Key, metas ds.MultiMetaGetter, cb ds.GetMu
 		}
 		if len(toCas) > 0 {
 			// we have entries to save back to memcache.
-			if err := d.mc.CompareAndSwapMulti(toCas); err != nil {
-				(log.Fields{log.ErrorKey: err}).Warningf(
-					d.c, "dscache: GetMulti: memcache.CompareAndSwapMulti")
+			if err := mc.CompareAndSwap(d.c, toCas...); err != nil {
+				(log.Fields{log.ErrorKey: err}).Debugf(
+					d.c, "dscache: GetMulti: memcache.CompareAndSwap")
 			}
 		}
 	}
@@ -119,7 +129,9 @@ func (d *dsCache) GetMulti(keys []*ds.Key, metas ds.MultiMetaGetter, cb ds.GetMu
 	// finally, run the callback for all of the decoded items and the errors,
 	// if any.
 	for i, dec := range p.decoded {
-		cb(dec, p.lme.GetOne(i))
+		if err := cb(i, dec, p.lme.GetOne(i)); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -129,7 +141,7 @@ func (d *dsCache) RunInTransaction(f func(context.Context) error, opts *ds.Trans
 	txnState := dsTxnState{}
 	err := d.RawInterface.RunInTransaction(func(ctx context.Context) error {
 		txnState.reset()
-		err := f(context.WithValue(ctx, dsTxnCacheKey, &txnState))
+		err := f(context.WithValue(ctx, &dsTxnCacheKey, &txnState))
 		if err == nil {
 			err = txnState.apply(d.supportContext)
 		}

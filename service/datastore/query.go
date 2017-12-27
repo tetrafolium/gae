@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
@@ -9,9 +19,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
-	"github.com/luci/luci-go/common/errors"
-	"github.com/luci/luci-go/common/stringset"
+	"go.chromium.org/luci/common/data/stringset"
+	"go.chromium.org/luci/common/errors"
 )
 
 var (
@@ -29,7 +40,25 @@ var (
 // Query is a builder-object for building a datastore query. It may represent
 // an invalid query, but the error will only be observable when you call
 // Finalize.
+//
+// A Query is, for the most part, not goroutine-safe. However, it is
 type Query struct {
+	queryFields
+
+	// These are set by Finalize as a way to cache the 1-1 correspondence of
+	// a Query to its FinalizedQuery form. err may also be set by intermediate
+	// Query functions if there's a problem before finalization.
+	//
+	// Query implements lazy finalization, meaning that it will happen at most
+	// once. This means that the finalization state and cached finalization must
+	// be locked around.
+	finalizeOnce sync.Once
+	finalized    *FinalizedQuery
+	finalizeErr  error
+}
+
+// queryFields are the Query's read-only fields.
+type queryFields struct {
 	kind string
 
 	eventualConsistency bool
@@ -55,17 +84,17 @@ type Query struct {
 	start Cursor
 	end   Cursor
 
-	// These are set by Finalize as a way to cache the 1-1 correspondence of
-	// a Query to its FinalizedQuery form. err may also be set by intermediate
-	// Query functions if there's a problem before finalization.
-	finalized *FinalizedQuery
-	err       error
+	err error
 }
 
 // NewQuery returns a new Query for the given kind. If kind may be empty to
 // begin a kindless query.
 func NewQuery(kind string) *Query {
-	return &Query{kind: kind}
+	return &Query{
+		queryFields: queryFields{
+			kind: kind,
+		},
+	}
 }
 
 func (q *Query) mod(cb func(*Query)) *Query {
@@ -73,8 +102,9 @@ func (q *Query) mod(cb func(*Query)) *Query {
 		return q
 	}
 
-	ret := *q
-	ret.finalized = nil
+	ret := Query{
+		queryFields: q.queryFields,
+	}
 	if len(q.order) > 0 {
 		ret.order = make([]IndexColumn, len(q.order))
 		copy(ret.order, q.order)
@@ -468,10 +498,17 @@ func (q *Query) ClearFilters() *Query {
 // inconsistencies or violates any of the query rules, that will be returned
 // here.
 func (q *Query) Finalize() (*FinalizedQuery, error) {
-	if q.err != nil || q.finalized != nil {
-		return q.finalized, q.err
+	if q.err != nil {
+		return nil, q.err
 	}
 
+	q.finalizeOnce.Do(func() {
+		q.finalized, q.finalizeErr = q.finalizeImpl()
+	})
+	return q.finalized, q.finalizeErr
+}
+
+func (q *Query) finalizeImpl() (*FinalizedQuery, error) {
 	ancestor := (*Key)(nil)
 	if slice, ok := q.eqFilts["__ancestor__"]; ok {
 		ancestor = slice[0].Value().(*Key)
@@ -544,7 +581,6 @@ func (q *Query) Finalize() (*FinalizedQuery, error) {
 		return err
 	}()
 	if err != nil {
-		q.err = err
 		return nil, err
 	}
 
@@ -568,6 +604,11 @@ func (q *Query) Finalize() (*FinalizedQuery, error) {
 		ineqFiltHigh:     q.ineqFiltHigh,
 		ineqFiltHighIncl: q.ineqFiltHighIncl,
 		ineqFiltHighSet:  q.ineqFiltHighSet,
+	}
+	// If a starting cursor is provided, ignore the offset, as it would have been
+	// accounted for in the query that produced the cursor.
+	if ret.start != nil {
+		ret.offset = nil
 	}
 
 	if q.project != nil {
@@ -639,7 +680,6 @@ func (q *Query) Finalize() (*FinalizedQuery, error) {
 		ret.orders = append(ret.orders, IndexColumn{Property: "__key__"})
 	}
 
-	q.finalized = ret
 	return ret, nil
 }
 

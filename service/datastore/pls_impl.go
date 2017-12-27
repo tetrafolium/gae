@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // HEAVILY adapted from github.com/golang/appengine/datastore
 
@@ -14,7 +24,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/luci/luci-go/common/errors"
+	"go.chromium.org/luci/common/errors"
 )
 
 // Entities with more than this many indexed properties will not be saved.
@@ -42,8 +52,9 @@ type structCodec struct {
 }
 
 type structPLS struct {
-	o reflect.Value
-	c *structCodec
+	o   reflect.Value
+	c   *structCodec
+	mgs MetaGetterSetter
 }
 
 var _ PropertyLoadSaver = (*structPLS)(nil)
@@ -68,16 +79,17 @@ func (p *structPLS) Load(propMap PropertyMap) error {
 		}
 	}
 	t := reflect.Type(nil)
-	for name, props := range propMap {
-		multiple := len(props) > 1
-		for i, prop := range props {
-			if reason := loadInner(p.c, p.o, i, name, prop, multiple); reason != "" {
+	for name, pdata := range propMap {
+		pslice := pdata.Slice()
+		requireSlice := len(pslice) > 1
+		for i, prop := range pslice {
+			if reason := loadInner(p.c, p.o, i, name, prop, requireSlice); reason != "" {
 				if useExtra {
 					if extra != nil {
 						if *extra == nil {
 							*extra = make(PropertyMap, 1)
 						}
-						(*extra)[name] = props
+						(*extra)[name] = pslice
 					}
 					break // go to the next property in propMap
 				} else {
@@ -232,11 +244,15 @@ func loadInner(codec *structCodec, structValue reflect.Value, index int, name st
 func (p *structPLS) Save(withMeta bool) (PropertyMap, error) {
 	ret := PropertyMap(nil)
 	if withMeta {
-		ret = getMGS(p.o.Addr().Interface()).GetAllMeta()
+		if p.mgs != nil {
+			ret = p.mgs.GetAllMeta()
+		} else {
+			ret = p.GetAllMeta()
+		}
 	} else {
 		ret = make(PropertyMap, len(p.c.byName))
 	}
-	if _, err := p.save(ret, "", ShouldIndex); err != nil {
+	if _, err := p.save(ret, "", nil, ShouldIndex); err != nil {
 		return nil, err
 	}
 	return ret, nil
@@ -249,10 +265,10 @@ func (p *structPLS) getDefaultKind() string {
 	return p.o.Type().Name()
 }
 
-func (p *structPLS) save(propMap PropertyMap, prefix string, is IndexSetting) (idxCount int, err error) {
+func (p *structPLS) save(propMap PropertyMap, prefix string, parentST *structTag, is IndexSetting) (idxCount int, err error) {
 	saveProp := func(name string, si IndexSetting, v reflect.Value, st *structTag) (err error) {
 		if st.substructCodec != nil {
-			count, err := (&structPLS{v, st.substructCodec}).save(propMap, name, si)
+			count, err := (&structPLS{v, st.substructCodec, nil}).save(propMap, name, st, si)
 			if err == nil {
 				idxCount += count
 				if idxCount > maxIndexedProperties {
@@ -271,7 +287,21 @@ func (p *structPLS) save(propMap PropertyMap, prefix string, is IndexSetting) (i
 		if err != nil {
 			return err
 		}
-		propMap[name] = append(propMap[name], prop)
+
+		// If we're a slice, or we are members in a slice, then use a PropertySlice.
+		if st.isSlice || (parentST != nil && parentST.isSlice) {
+			var pslice PropertySlice
+			if pdata := propMap[name]; pdata != nil {
+				pslice = pdata.(PropertySlice)
+			}
+			propMap[name] = append(pslice, prop)
+		} else {
+			if _, ok := propMap[name]; ok {
+				return errors.New("non-slice property adding multiple PropertyMap entries")
+			}
+			propMap[name] = prop
+		}
+
 		if prop.IndexSetting() == ShouldIndex {
 			idxCount++
 			if idxCount > maxIndexedProperties {
@@ -297,11 +327,13 @@ func (p *structPLS) save(propMap PropertyMap, prefix string, is IndexSetting) (i
 		if st.isSlice {
 			for j := 0; j < v.Len(); j++ {
 				if err = saveProp(name, is1, v.Index(j), &st); err != nil {
+					err = fmt.Errorf("gae: failed to save slice field %q: %v", name, err)
 					return
 				}
 			}
 		} else {
 			if err = saveProp(name, is1, v, &st); err != nil {
+				err = fmt.Errorf("gae: failed to save single field %q: %v", name, err)
 				return
 			}
 		}
@@ -365,12 +397,12 @@ func (p *structPLS) GetAllMeta() PropertyMap {
 			if err := p.SetValue(val, NoIndex); err != nil {
 				continue
 			}
-			ret["$"+k] = []Property{p}
+			ret["$"+k] = p
 		}
 	}
 	if needKind {
 		if _, ok := p.c.byMeta["kind"]; !ok {
-			ret["$kind"] = []Property{MkPropertyNI(p.getDefaultKind())}
+			ret["$kind"] = MkPropertyNI(p.getDefaultKind())
 		}
 	}
 	return ret

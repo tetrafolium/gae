@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package main
 
@@ -14,8 +24,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/luci/luci-go/common/errors"
-	"github.com/luci/luci-go/common/flag/stringsetflag"
+	"go.chromium.org/luci/common/errors"
+	"go.chromium.org/luci/common/flag/stringsetflag"
 )
 
 type app struct {
@@ -41,9 +51,19 @@ methods for the named types.
 Options:
 `
 
-const copyright = `// Copyright 2016 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+const copyright = `// Copyright 2017 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 `
 
 func (a *app) parseArgs(fs *flag.FlagSet, args []string) error {
@@ -58,7 +78,7 @@ func (a *app) parseArgs(fs *flag.FlagSet, args []string) error {
 	fs.StringVar(&a.outFile, "out", "proto_gae.gen.go",
 		"The name of the output file")
 	fs.StringVar(&a.header, "header", copyright, "Header text to put at the top of "+
-		"the generated file. Defaults to the Chromium Authors copyright.")
+		"the generated file. Defaults to the LUCI Authors copyright.")
 
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -90,14 +110,14 @@ package {{index . "package"}}
 import (
 	"github.com/golang/protobuf/proto"
 
-	"github.com/tetrafolium/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore"
 ){{range index . "types"}}
 
 var _ datastore.PropertyConverter = (*{{.}})(nil)
 
 // ToProperty implements datastore.PropertyConverter. It causes an embedded
 // '{{.}}' to serialize to an unindexed '[]byte' when used with the
-// "github.com/tetrafolium/gae" library.
+// "go.chromium.org/gae" library.
 func (p *{{.}}) ToProperty() (prop datastore.Property, err error) {
 	data, err := proto.Marshal(p)
 	if err == nil {
@@ -107,7 +127,7 @@ func (p *{{.}}) ToProperty() (prop datastore.Property, err error) {
 }
 
 // FromProperty implements datastore.PropertyConverter. It parses a '[]byte'
-// into an embedded '{{.}}' when used with the "github.com/tetrafolium/gae" library.
+// into an embedded '{{.}}' when used with the "go.chromium.org/gae" library.
 func (p *{{.}}) FromProperty(prop datastore.Property) error {
 	data, err := prop.Project(datastore.PTBytes)
 	if err != nil {

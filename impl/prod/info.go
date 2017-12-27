@@ -1,13 +1,23 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package prod
 
 import (
 	"time"
 
-	"github.com/tetrafolium/gae/service/info"
+	"go.chromium.org/gae/service/info"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/datastore"
@@ -18,11 +28,11 @@ import (
 func useGI(usrCtx context.Context) context.Context {
 	probeCache := getProbeCache(usrCtx)
 	if probeCache == nil {
-		usrCtx = withProbeCache(usrCtx, probe(AEContext(usrCtx)))
+		usrCtx = withProbeCache(usrCtx, probe(getAEContext(usrCtx)))
 	}
 
-	return info.SetFactory(usrCtx, func(ci context.Context) info.Interface {
-		return giImpl{ci, AEContext(ci)}
+	return info.SetFactory(usrCtx, func(ci context.Context) info.RawInterface {
+		return giImpl{ci, getAEContext(ci)}
 	})
 }
 
@@ -68,21 +78,35 @@ func (g giImpl) ModuleName() (name string) {
 	return appengine.ModuleName(g.aeCtx)
 }
 func (g giImpl) Namespace(namespace string) (context.Context, error) {
-	aeCtx, err := appengine.Namespace(g.aeCtx, namespace)
-	if err != nil {
-		return g.usrCtx, err
+	c := g.usrCtx
+
+	pc := *getProbeCache(c)
+	if pc.namespace == namespace {
+		// Already using this namespace.
+		return c, nil
 	}
-	usrCtx := context.WithValue(g.usrCtx, prodContextKey, aeCtx)
-	pc := *getProbeCache(usrCtx)
 	pc.namespace = namespace
-	return withProbeCache(usrCtx, &pc), nil
-}
-func (g giImpl) MustNamespace(ns string) context.Context {
-	ret, err := g.Namespace(ns)
+
+	// Apply the namespace to our retained GAE Contexts.
+	var err error
+	ps := getProdState(c)
+
+	// Apply to current GAE Context.
+	if ps.ctx, err = appengine.Namespace(ps.ctx, namespace); err != nil {
+		return c, err
+	}
+
+	// Apply to non-transactional Context. Since the previous one applied
+	// successfully, this must succeed.
+	ps.noTxnCtx, err = appengine.Namespace(ps.noTxnCtx, namespace)
 	if err != nil {
 		panic(err)
 	}
-	return ret
+
+	// Update our user Context with the new namespace-imbued objects.
+	c = withProbeCache(c, &pc)
+	c = withProdState(c, ps)
+	return c, nil
 }
 func (g giImpl) PublicCertificates() ([]info.Certificate, error) {
 	certs, err := appengine.PublicCertificates(g.aeCtx)
@@ -102,6 +126,11 @@ func (g giImpl) ServerSoftware() string {
 	return appengine.ServerSoftware()
 }
 func (g giImpl) ServiceAccount() (string, error) {
+	if appengine.IsDevAppServer() {
+		// On devserver ServiceAccount returns empty string, but AccessToken works.
+		// We use it to grab developer's email.
+		return developerAccount(g.aeCtx)
+	}
 	return appengine.ServiceAccount(g.aeCtx)
 }
 func (g giImpl) SignBytes(bytes []byte) (keyName string, signature []byte, err error) {
@@ -111,6 +140,8 @@ func (g giImpl) VersionID() string {
 	return appengine.VersionID(g.aeCtx)
 }
 
+func (g giImpl) GetTestable() info.Testable { return nil }
+
 type infoProbeCache struct {
 	namespace string
 	fqaid     string
@@ -118,19 +149,20 @@ type infoProbeCache struct {
 
 func probe(aeCtx context.Context) *infoProbeCache {
 	probeKey := datastore.NewKey(aeCtx, "Kind", "id", 0, nil)
-	return &infoProbeCache{
-		namespace: probeKey.Namespace(),
+	ipb := infoProbeCache{
 		fqaid:     probeKey.AppID(),
+		namespace: probeKey.Namespace(),
 	}
+	return &ipb
 }
 
 func getProbeCache(c context.Context) *infoProbeCache {
-	if pc, ok := c.Value(probeCacheKey).(*infoProbeCache); ok {
+	if pc, ok := c.Value(&probeCacheKey).(*infoProbeCache); ok {
 		return pc
 	}
 	return nil
 }
 
 func withProbeCache(c context.Context, pc *infoProbeCache) context.Context {
-	return context.WithValue(c, probeCacheKey, pc)
+	return context.WithValue(c, &probeCacheKey, pc)
 }

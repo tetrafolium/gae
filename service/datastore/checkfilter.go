@@ -1,32 +1,31 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
 import (
 	"fmt"
 
-	"github.com/tetrafolium/gae/service/info"
-	"github.com/luci/luci-go/common/errors"
+	"go.chromium.org/luci/common/errors"
+
 	"golang.org/x/net/context"
 )
 
 type checkFilter struct {
 	RawInterface
 
-	aid string
-	ns  string
-}
-
-func (tcf *checkFilter) AllocateIDs(incomplete *Key, n int) (start int64, err error) {
-	if n <= 0 {
-		return 0, fmt.Errorf("datastore: invalid `n` parameter in AllocateIDs: %d", n)
-	}
-	if !incomplete.PartialValid(tcf.aid, tcf.ns) {
-		return 0, ErrInvalidKey
-	}
-	return tcf.RawInterface.AllocateIDs(incomplete, n)
+	kc KeyContext
 }
 
 func (tcf *checkFilter) RunInTransaction(f func(c context.Context) error, opts *TransactionOptions) error {
@@ -55,20 +54,27 @@ func (tcf *checkFilter) GetMulti(keys []*Key, meta MultiMetaGetter, cb GetMultiC
 	}
 	lme := errors.NewLazyMultiError(len(keys))
 	for i, k := range keys {
-		if k.Incomplete() || !k.Valid(true, tcf.aid, tcf.ns) {
-			lme.Assign(i, ErrInvalidKey)
+		var err error
+		switch {
+		case k.IsIncomplete():
+			err = MakeErrInvalidKey("key [%s] is incomplete", k).Err()
+		case !k.Valid(true, tcf.kc):
+			err = MakeErrInvalidKey("key [%s] is not valid in context %s", k, tcf.kc).Err()
+		}
+		if err != nil {
+			lme.Assign(i, err)
 		}
 	}
 	if me := lme.Get(); me != nil {
-		for _, err := range me.(errors.MultiError) {
-			cb(nil, err)
+		for idx, err := range me.(errors.MultiError) {
+			cb(idx, nil, err)
 		}
 		return nil
 	}
 	return tcf.RawInterface.GetMulti(keys, meta, cb)
 }
 
-func (tcf *checkFilter) PutMulti(keys []*Key, vals []PropertyMap, cb PutMultiCB) error {
+func (tcf *checkFilter) PutMulti(keys []*Key, vals []PropertyMap, cb NewKeyCB) error {
 	if len(keys) != len(vals) {
 		return fmt.Errorf("datastore: PutMulti with mismatched keys/vals lengths (%d/%d)", len(keys), len(vals))
 	}
@@ -80,8 +86,8 @@ func (tcf *checkFilter) PutMulti(keys []*Key, vals []PropertyMap, cb PutMultiCB)
 	}
 	lme := errors.NewLazyMultiError(len(keys))
 	for i, k := range keys {
-		if !k.PartialValid(tcf.aid, tcf.ns) {
-			lme.Assign(i, ErrInvalidKey)
+		if !k.PartialValid(tcf.kc) {
+			lme.Assign(i, MakeErrInvalidKey("key [%s] is not partially valid in context %s", k, tcf.kc).Err())
 			continue
 		}
 		v := vals[i]
@@ -90,8 +96,8 @@ func (tcf *checkFilter) PutMulti(keys []*Key, vals []PropertyMap, cb PutMultiCB)
 		}
 	}
 	if me := lme.Get(); me != nil {
-		for _, err := range me.(errors.MultiError) {
-			cb(nil, err)
+		for idx, err := range me.(errors.MultiError) {
+			cb(idx, nil, err)
 		}
 		return nil
 	}
@@ -108,13 +114,20 @@ func (tcf *checkFilter) DeleteMulti(keys []*Key, cb DeleteMultiCB) error {
 	}
 	lme := errors.NewLazyMultiError(len(keys))
 	for i, k := range keys {
-		if k.Incomplete() || !k.Valid(false, tcf.aid, tcf.ns) {
-			lme.Assign(i, ErrInvalidKey)
+		var err error
+		switch {
+		case k.IsIncomplete():
+			err = MakeErrInvalidKey("key [%s] is incomplete", k).Err()
+		case !k.Valid(false, tcf.kc):
+			err = MakeErrInvalidKey("key [%s] is not valid in context %s", k, tcf.kc).Err()
+		}
+		if err != nil {
+			lme.Assign(i, err)
 		}
 	}
 	if me := lme.Get(); me != nil {
-		for _, err := range me.(errors.MultiError) {
-			cb(err)
+		for idx, err := range me.(errors.MultiError) {
+			cb(idx, err)
 		}
 		return nil
 	}
@@ -122,6 +135,8 @@ func (tcf *checkFilter) DeleteMulti(keys []*Key, cb DeleteMultiCB) error {
 }
 
 func applyCheckFilter(c context.Context, i RawInterface) RawInterface {
-	inf := info.Get(c)
-	return &checkFilter{i, inf.FullyQualifiedAppID(), inf.GetNamespace()}
+	return &checkFilter{
+		RawInterface: i,
+		kc:           GetKeyContext(c),
+	}
 }

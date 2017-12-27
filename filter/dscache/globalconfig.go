@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package dscache
 
@@ -8,10 +18,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/info"
-	"github.com/tetrafolium/gae/service/memcache"
-	"github.com/luci/luci-go/common/clock"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/info"
+	mc "go.chromium.org/gae/service/memcache"
+
+	"go.chromium.org/luci/common/clock"
+
 	"golang.org/x/net/context"
 )
 
@@ -74,12 +86,12 @@ func IsGloballyEnabled(c context.Context) bool {
 	}
 
 	// always go to the default namespace
-	c, err := info.Get(c).Namespace("")
+	c, err := info.Namespace(c, "")
 	if err != nil {
 		return true
 	}
 	cfg := &GlobalConfig{Enable: true}
-	if err := datastore.Get(c).Get(cfg); err != nil && err != datastore.ErrNoSuchEntity {
+	if err := ds.Get(c, cfg); err != nil && err != ds.ErrNoSuchEntity {
 		return true
 	}
 	globalEnabled = cfg.Enable
@@ -93,14 +105,13 @@ func IsGloballyEnabled(c context.Context) bool {
 // functionality on or off in emergencies.
 func SetGlobalEnable(c context.Context, memcacheEnabled bool) error {
 	// always go to the default namespace
-	c, err := info.Get(c).Namespace("")
+	c, err := info.Namespace(c, "")
 	if err != nil {
 		return err
 	}
-	return datastore.Get(c).RunInTransaction(func(c context.Context) error {
-		ds := datastore.Get(c)
+	return ds.RunInTransaction(c, func(c context.Context) error {
 		cfg := &GlobalConfig{Enable: true}
-		if err := ds.Get(cfg); err != nil && err != datastore.ErrNoSuchEntity {
+		if err := ds.Get(c, cfg); err != nil && err != ds.ErrNoSuchEntity {
 			return err
 		}
 		if cfg.Enable == memcacheEnabled {
@@ -109,10 +120,10 @@ func SetGlobalEnable(c context.Context, memcacheEnabled bool) error {
 		cfg.Enable = memcacheEnabled
 		if memcacheEnabled {
 			// when going false -> true, wipe memcache.
-			if err := memcache.Get(c).Flush(); err != nil {
+			if err := mc.Flush(c); err != nil {
 				return err
 			}
 		}
-		return ds.Put(cfg)
+		return ds.Put(c, cfg)
 	}, nil)
 }

@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -8,12 +18,14 @@ import (
 	"bytes"
 	"testing"
 
-	dstore "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/luci-go/common/cmpbin"
-	"github.com/luci/luci-go/common/stringset"
-	. "github.com/luci/luci-go/common/testing/assertions"
+	dstore "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
+
+	"go.chromium.org/luci/common/data/cmpbin"
+	"go.chromium.org/luci/common/data/stringset"
+
 	. "github.com/smartystreets/goconvey/convey"
+	. "go.chromium.org/luci/common/testing/assertions"
 )
 
 type sillyCursor string
@@ -116,7 +128,8 @@ var queryTests = []queryTest{
 			End(curs("Foo", 20, "__key__", key("Something", 20)))),
 		nil,
 		&reducedQuery{
-			"dev~app", "ns", "Foo", map[string]stringset.Set{}, []dstore.IndexColumn{
+			dstore.MkKeyContext("dev~app", "ns"),
+			"Foo", map[string]stringset.Set{}, []dstore.IndexColumn{
 				{Property: "Foo"},
 				{Property: "__key__"},
 			},
@@ -137,10 +150,12 @@ func TestQueries(t *testing.T) {
 	t.Parallel()
 
 	Convey("queries have tons of condition checking", t, func() {
+		kc := dstore.MkKeyContext("dev~app", "ns")
+
 		Convey("non-ancestor queries in a transaction", func() {
 			fq, err := nq().Finalize()
 			So(err, ShouldErrLike, nil)
-			_, err = reduce(fq, "dev~app", "ns", true)
+			_, err = reduce(fq, kc, true)
 			So(err, ShouldErrLike, "must include an Ancestor")
 		})
 
@@ -151,7 +166,7 @@ func TestQueries(t *testing.T) {
 			}
 			fq, err := q.Finalize()
 			So(err, ShouldErrLike, nil)
-			_, err = reduce(fq, "dev~app", "ns", false)
+			_, err = reduce(fq, kc, false)
 			So(err, ShouldErrLike, "query is too large")
 		})
 
@@ -161,9 +176,9 @@ func TestQueries(t *testing.T) {
 					rq := (*reducedQuery)(nil)
 					fq, err := tc.q.Finalize()
 					if err == nil {
-						err = fq.Valid("s~aid", "ns")
+						err = fq.Valid(kc)
 						if err == nil {
-							rq, err = reduce(fq, "dev~app", "ns", false)
+							rq, err = reduce(fq, kc, false)
 						}
 					}
 					So(err, ShouldErrLike, tc.err)

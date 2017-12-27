@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
@@ -138,7 +148,7 @@ import (
 //     // "kind" is automatically implied by the struct name: "Comment"
 //
 //     // Parent will be enforced by the application to be a User key.
-//     Parent Key `gae:"$parent"`
+//     Parent *Key `gae:"$parent"`
 //
 //     // 'Lines' will serialized to the datastore in the field 'Lines'
 //     Lines []string
@@ -219,15 +229,27 @@ func GetPLS(obj interface{}) interface {
 	if !v.IsValid() {
 		panic(fmt.Errorf("cannot GetPLS(%T): failed to reflect", obj))
 	}
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		panic(fmt.Errorf("cannot GetPLS(%T): not a pointer-to-struct", obj))
-	}
 	if v.IsNil() {
-		panic(fmt.Errorf("cannot GetPLS(%T): pointer-to-struct is nil", obj))
+		panic(fmt.Errorf("cannot GetPLS(%T): pointer is nil", obj))
 	}
-	v = v.Elem()
-	c := getCodec(v.Type())
-	return &structPLS{v, c}
+
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+		if v.Kind() == reflect.Struct {
+			s := structPLS{
+				c: getCodec(v.Type()),
+				o: v,
+			}
+
+			// If our object implements MetaGetterSetter, use this instead of the built-in
+			// PLS MetaGetterSetter.
+			if mgs, ok := obj.(MetaGetterSetter); ok {
+				s.mgs = mgs
+			}
+			return &s
+		}
+	}
+	panic(fmt.Errorf("cannot GetPLS(%T): not a pointer-to-struct", obj))
 }
 
 func getMGS(obj interface{}) MetaGetterSetter {

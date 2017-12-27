@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -8,10 +18,11 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/gkvlite"
-	"github.com/luci/luci-go/common/cmpbin"
+	"go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
+
+	"go.chromium.org/luci/common/data/cmpbin"
+
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -30,42 +41,56 @@ func readNum(data []byte) int64 {
 	return ret
 }
 
+func countItems(mc memCollection) int {
+	count := 0
+	mc.ForEachItem(func(_, _ []byte) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 func TestIterator(t *testing.T) {
 	t.Parallel()
 
 	s := newMemStore()
-	c := s.SetCollection("zup", nil)
+	c := s.GetOrCreateCollection("zup")
 	prev := []byte{}
 	for i := 5; i < 100; i++ {
 		data := mkNum(int64(i))
 		c.Set(data, prev)
 		prev = data
 	}
+	c = s.Snapshot().GetCollection("zup")
+
+	iterCB := func(it *iterator, cb func(k, v []byte)) {
+		for ent := it.next(); ent != nil; ent = it.next() {
+			cb(ent.key, ent.value)
+		}
+	}
 
 	get := func(c C, t *iterator) interface{} {
-		ret := interface{}(nil)
-		t.next(nil, func(i *gkvlite.Item) {
-			if i != nil {
-				ret = readNum(i.Key)
-			}
-		})
-		return ret
+		if ent := t.next(); ent != nil {
+			return readNum(ent.key)
+		}
+		return nil
 	}
 
 	skipGet := func(c C, t *iterator, skipTo int64) interface{} {
-		ret := interface{}(nil)
-		t.next(mkNum(skipTo), func(i *gkvlite.Item) {
-			if i != nil {
-				ret = readNum(i.Key)
-			}
+		t.skip(mkNum(skipTo))
+		return get(c, t)
+	}
+
+	didIterate := func(t *iterator) (did bool) {
+		iterCB(t, func(k, v []byte) {
+			did = true
 		})
-		return ret
+		return
 	}
 
 	Convey("Test iterator", t, func() {
 		Convey("start at nil", func(ctx C) {
 			t := (&iterDefinition{c: c}).mkIter()
-			defer t.stop()
 			So(get(ctx, t), ShouldEqual, 5)
 			So(get(ctx, t), ShouldEqual, 6)
 			So(get(ctx, t), ShouldEqual, 7)
@@ -75,12 +100,9 @@ func TestIterator(t *testing.T) {
 				So(get(ctx, t), ShouldEqual, 11)
 
 				Convey("But not forever", func(ctx C) {
-					t.next(mkNum(200), func(i *gkvlite.Item) {
-						ctx.So(i, ShouldBeNil)
-					})
-					t.next(nil, func(i *gkvlite.Item) {
-						ctx.So(i, ShouldBeNil)
-					})
+					t.skip(mkNum(200))
+					So(didIterate(t), ShouldBeFalse)
+					So(didIterate(t), ShouldBeFalse)
 				})
 			})
 
@@ -90,17 +112,6 @@ func TestIterator(t *testing.T) {
 
 				// Giving the immediately next key doesn't cause an internal reset.
 				So(skipGet(ctx, t, 10), ShouldEqual, 10)
-			})
-
-			Convey("Can stop", func(ctx C) {
-				t.stop()
-				t.next(mkNum(200), func(i *gkvlite.Item) {
-					ctx.So(i, ShouldBeNil)
-				})
-				t.next(nil, func(i *gkvlite.Item) {
-					ctx.So(i, ShouldBeNil)
-				})
-				So(t.stop, ShouldNotPanic)
 			})
 
 			Convey("Going backwards is ignored", func(ctx C) {
@@ -128,9 +139,8 @@ func TestIterator(t *testing.T) {
 			So(get(ctx, t), ShouldEqual, 22)
 			So(get(ctx, t), ShouldEqual, 23)
 			So(get(ctx, t), ShouldEqual, 24)
-			t.next(nil, func(i *gkvlite.Item) {
-				ctx.So(i, ShouldBeNil)
-			})
+
+			So(didIterate(t), ShouldBeFalse)
 		})
 
 		Convey("can skip over starting cap", func(ctx C) {
@@ -138,11 +148,9 @@ func TestIterator(t *testing.T) {
 			So(skipGet(ctx, t, 22), ShouldEqual, 22)
 			So(get(ctx, t), ShouldEqual, 23)
 			So(get(ctx, t), ShouldEqual, 24)
-			t.next(nil, func(i *gkvlite.Item) {
-				ctx.So(i, ShouldBeNil)
-			})
-		})
 
+			So(didIterate(t), ShouldBeFalse)
+		})
 	})
 }
 
@@ -191,14 +199,16 @@ func TestMultiIteratorSimple(t *testing.T) {
 
 	Convey("Test MultiIterator", t, func() {
 		s := newMemStore()
-		c := s.SetCollection("zup1", nil)
+		c := s.GetOrCreateCollection("zup1")
 		for _, row := range valBytes {
 			c.Set(row, []byte{})
 		}
-		c2 := s.SetCollection("zup2", nil)
+		c2 := s.GetOrCreateCollection("zup2")
 		for _, row := range otherValBytes {
 			c2.Set(row, []byte{})
 		}
+		c = s.Snapshot().GetCollection("zup1")
+		c2 = s.Snapshot().GetCollection("zup2")
 
 		Convey("can join the same collection twice", func() {
 			// get just the (1, *)
@@ -214,7 +224,7 @@ func TestMultiIteratorSimple(t *testing.T) {
 				So(readNum(suffix), ShouldEqual, vals[i][1])
 				i++
 				return nil
-			}), ShouldBeNil)
+			}), shouldBeSuccessful)
 
 			So(i, ShouldEqual, 3)
 		})
@@ -229,7 +239,7 @@ func TestMultiIteratorSimple(t *testing.T) {
 			i := 0
 			So(multiIterate(defs, func(suffix []byte) error {
 				panic("never")
-			}), ShouldBeNil)
+			}), shouldBeSuccessful)
 
 			So(i, ShouldEqual, 0)
 		})
@@ -249,7 +259,7 @@ func TestMultiIteratorSimple(t *testing.T) {
 				So(readNum(suffix), ShouldEqual, expect[i])
 				i++
 				return nil
-			}), ShouldBeNil)
+			}), shouldBeSuccessful)
 		})
 
 		Convey("Can stop early", func() {
@@ -263,7 +273,7 @@ func TestMultiIteratorSimple(t *testing.T) {
 				So(readNum(suffix), ShouldEqual, vals[i][1])
 				i++
 				return nil
-			}), ShouldBeNil)
+			}), shouldBeSuccessful)
 			So(i, ShouldEqual, 5)
 
 			i = 0
@@ -271,7 +281,7 @@ func TestMultiIteratorSimple(t *testing.T) {
 				So(readNum(suffix), ShouldEqual, vals[i][1])
 				i++
 				return datastore.Stop
-			}), ShouldBeNil)
+			}), shouldBeSuccessful)
 			So(i, ShouldEqual, 1)
 		})
 

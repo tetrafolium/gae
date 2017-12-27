@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -9,9 +19,8 @@ import (
 	"fmt"
 	"sort"
 
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/gkvlite"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
 )
 
 type qIndexSlice []*ds.IndexDefinition
@@ -23,7 +32,8 @@ func (s qIndexSlice) Less(i, j int) bool { return s[i].Less(s[j]) }
 func defaultIndexes(kind string, pmap ds.PropertyMap) []*ds.IndexDefinition {
 	ret := make(qIndexSlice, 0, 2*len(pmap)+1)
 	ret = append(ret, &ds.IndexDefinition{Kind: kind})
-	for name, pvals := range pmap {
+	for name := range pmap {
+		pvals := pmap.Slice(name)
 		needsIndex := false
 		for _, v := range pvals {
 			if v.IndexSetting() == ds.ShouldIndex {
@@ -43,9 +53,18 @@ func defaultIndexes(kind string, pmap ds.PropertyMap) []*ds.IndexDefinition {
 	return ret
 }
 
-func indexEntriesWithBuiltins(k *ds.Key, pm ds.PropertyMap, complexIdxs []*ds.IndexDefinition) *memStore {
-	sip := serialize.PropertyMapPartially(k, pm)
-	return indexEntries(sip, k.Namespace(), append(defaultIndexes(k.Kind(), pm), complexIdxs...))
+// indexEntriesWithBuiltins generates a new memStore containing the default
+// indexes for (k, pm) combined with complexIdxs.
+//
+// If "pm" is nil, this indicates an absence of a value. This is used
+// specifically for deletion.
+func indexEntriesWithBuiltins(k *ds.Key, pm ds.PropertyMap, complexIdxs []*ds.IndexDefinition) memStore {
+	var sip serialize.SerializedPmap
+	if pm == nil {
+		return newMemStore()
+	}
+	sip = serialize.PropertyMapPartially(k, pm)
+	return indexEntries(k, sip, append(defaultIndexes(k.Kind(), pm), complexIdxs...))
 }
 
 // indexRowGen contains enough information to generate all of the index rows which
@@ -132,17 +151,23 @@ func (m *matcher) match(sortBy []ds.IndexColumn, sip serialize.SerializedPmap) (
 	return m.buf, true
 }
 
-func indexEntries(sip serialize.SerializedPmap, ns string, idxs []*ds.IndexDefinition) *memStore {
+// indexEntries generates a new memStore containing index entries for sip for
+// the supplied index definitions.
+func indexEntries(key *ds.Key, sip serialize.SerializedPmap, idxs []*ds.IndexDefinition) memStore {
 	ret := newMemStore()
-	idxColl := ret.SetCollection("idx", nil)
+	idxColl := ret.GetOrCreateCollection("idx")
 
 	mtch := matcher{}
 	for _, idx := range idxs {
 		idx = idx.Normalize()
+		if idx.Kind != "" && idx.Kind != key.Kind() {
+			continue
+		}
 		if irg, ok := mtch.match(idx.GetFullSortOrder(), sip); ok {
 			idxBin := serialize.ToBytes(*idx.PrepForIdxTable())
 			idxColl.Set(idxBin, []byte{})
-			coll := ret.SetCollection(fmt.Sprintf("idx:%s:%s", ns, idxBin), nil)
+			coll := ret.GetOrCreateCollection(
+				fmt.Sprintf("idx:%s:%s", key.Namespace(), idxBin))
 			irg.permute(coll.Set)
 		}
 	}
@@ -153,7 +178,7 @@ func indexEntries(sip serialize.SerializedPmap, ns string, idxs []*ds.IndexDefin
 // walkCompIdxs walks the table of compound indexes in the store. If `endsWith`
 // is provided, this will only walk over compound indexes which match
 // Kind, Ancestor, and whose SortBy has `endsWith.SortBy` as a suffix.
-func walkCompIdxs(store *memStore, endsWith *ds.IndexDefinition, cb func(*ds.IndexDefinition) bool) {
+func walkCompIdxs(store memStore, endsWith *ds.IndexDefinition, cb func(*ds.IndexDefinition) bool) {
 	idxColl := store.GetCollection("idx")
 	if idxColl == nil {
 		return
@@ -167,49 +192,44 @@ func walkCompIdxs(store *memStore, endsWith *ds.IndexDefinition, cb func(*ds.Ind
 	}
 
 	it := itrDef.mkIter()
-	defer it.stop()
-	for !it.stopped {
-		it.next(nil, func(i *gkvlite.Item) {
-			if i == nil {
-				return
-			}
-			qi, err := serialize.ReadIndexDefinition(bytes.NewBuffer(i.Key))
-			memoryCorruption(err)
-			if !cb(qi.Flip()) {
-				it.stop()
-			}
-		})
+	for ent := it.next(); ent != nil; ent = it.next() {
+		qi, err := serialize.ReadIndexDefinition(bytes.NewReader(ent.key))
+		memoryCorruption(err)
+		if !cb(qi.Flip()) {
+			break
+		}
 	}
 }
 
-func mergeIndexes(ns string, store, oldIdx, newIdx *memStore) {
+func mergeIndexes(ns string, store, oldIdx, newIdx memStore) {
 	prefixBuf := []byte("idx:" + ns + ":")
 	origPrefixBufLen := len(prefixBuf)
-	gkvCollide(oldIdx.GetCollection("idx"), newIdx.GetCollection("idx"), func(k, ov, nv []byte) {
+
+	oldIdx = oldIdx.Snapshot()
+	newIdx = newIdx.Snapshot()
+
+	memStoreCollide(oldIdx.GetCollection("idx"), newIdx.GetCollection("idx"), func(k, ov, nv []byte) {
 		prefixBuf = append(prefixBuf[:origPrefixBufLen], k...)
 		ks := string(prefixBuf)
 
-		coll := store.GetCollection(ks)
-		if coll == nil {
-			coll = store.SetCollection(ks, nil)
-		}
+		coll := store.GetOrCreateCollection(ks)
 
 		oldColl := oldIdx.GetCollection(ks)
 		newColl := newIdx.GetCollection(ks)
 
 		switch {
 		case ov == nil && nv != nil: // all additions
-			newColl.VisitItemsAscend(nil, false, func(i *gkvlite.Item) bool {
-				coll.Set(i.Key, []byte{})
+			newColl.ForEachItem(func(k, _ []byte) bool {
+				coll.Set(k, []byte{})
 				return true
 			})
 		case ov != nil && nv == nil: // all deletions
-			oldColl.VisitItemsAscend(nil, false, func(i *gkvlite.Item) bool {
-				coll.Delete(i.Key)
+			oldColl.ForEachItem(func(k, _ []byte) bool {
+				coll.Delete(k)
 				return true
 			})
 		case ov != nil && nv != nil: // merge
-			gkvCollide(oldColl, newColl, func(k, ov, nv []byte) {
+			memStoreCollide(oldColl, newColl, func(k, ov, nv []byte) {
 				if nv == nil {
 					coll.Delete(k)
 				} else {
@@ -217,45 +237,53 @@ func mergeIndexes(ns string, store, oldIdx, newIdx *memStore) {
 				}
 			})
 		default:
-			impossible(fmt.Errorf("both values from gkvCollide were nil?"))
+			impossible(fmt.Errorf("both values from memStoreCollide were nil?"))
 		}
 		// TODO(riannucci): remove entries from idxColl and remove index collections
 		// when there are no index entries for that index any more.
 	})
 }
 
-func addIndexes(store *memStore, aid, ns string, compIdx []*ds.IndexDefinition) {
+func addIndexes(store memStore, aid string, compIdx []*ds.IndexDefinition) {
 	normalized := make([]*ds.IndexDefinition, len(compIdx))
-	idxColl := store.SetCollection("idx", nil)
+	idxColl := store.GetOrCreateCollection("idx")
 	for i, idx := range compIdx {
 		normalized[i] = idx.Normalize()
 		idxColl.Set(serialize.ToBytes(*normalized[i].PrepForIdxTable()), []byte{})
 	}
 
-	if allEnts := store.GetCollection("ents:" + ns); allEnts != nil {
-		allEnts.VisitItemsAscend(nil, true, func(i *gkvlite.Item) bool {
-			pm, err := rpm(i.Val)
-			memoryCorruption(err)
+	for _, ns := range namespaces(store) {
+		kctx := ds.MkKeyContext(aid, ns)
+		if allEnts := store.Snapshot().GetCollection("ents:" + ns); allEnts != nil {
+			allEnts.ForEachItem(func(ik, iv []byte) bool {
+				pm, err := rpm(iv)
+				memoryCorruption(err)
 
-			prop, err := serialize.ReadProperty(bytes.NewBuffer(i.Key), serialize.WithoutContext, aid, ns)
-			memoryCorruption(err)
+				prop, err := serialize.ReadProperty(bytes.NewBuffer(ik), serialize.WithoutContext, kctx)
+				memoryCorruption(err)
 
-			k := prop.Value().(*ds.Key)
+				k := prop.Value().(*ds.Key)
 
-			sip := serialize.PropertyMapPartially(k, pm)
+				sip := serialize.PropertyMapPartially(k, pm)
 
-			mergeIndexes(ns, store,
-				newMemStore(),
-				indexEntries(sip, ns, normalized))
-			return true
-		})
+				mergeIndexes(ns, store,
+					newMemStore(),
+					indexEntries(k, sip, normalized))
+				return true
+			})
+		}
 	}
 }
 
-func updateIndexes(store *memStore, key *ds.Key, oldEnt, newEnt ds.PropertyMap) {
+// updateIndexes updates the indexes in store to accommodate a change in entity
+// value.
+//
+// oldEnt is the previous entity value, and newEnt is the new entity value. If
+// newEnt is nil, that signifies deletion.
+func updateIndexes(store memStore, key *ds.Key, oldEnt, newEnt ds.PropertyMap) {
 	// load all current complex query index definitions.
-	compIdx := []*ds.IndexDefinition{}
-	walkCompIdxs(store, nil, func(i *ds.IndexDefinition) bool {
+	var compIdx []*ds.IndexDefinition
+	walkCompIdxs(store.Snapshot(), nil, func(i *ds.IndexDefinition) bool {
 		compIdx = append(compIdx, i)
 		return true
 	})

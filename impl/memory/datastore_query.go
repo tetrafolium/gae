@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -10,10 +20,10 @@ import (
 	"errors"
 	"fmt"
 
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/luci-go/common/cmpbin"
-	"github.com/luci/luci-go/common/stringset"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
+	"go.chromium.org/luci/common/data/cmpbin"
+	"go.chromium.org/luci/common/data/stringset"
 )
 
 // MaxQueryComponents was lifted from a hard-coded constant in dev_appserver.
@@ -154,8 +164,8 @@ func GetBinaryBounds(fq *ds.FinalizedQuery) (lower, upper []byte) {
 	return
 }
 
-func reduce(fq *ds.FinalizedQuery, aid, ns string, isTxn bool) (*reducedQuery, error) {
-	if err := fq.Valid(aid, ns); err != nil {
+func reduce(fq *ds.FinalizedQuery, kc ds.KeyContext, isTxn bool) (*reducedQuery, error) {
+	if err := fq.Valid(kc); err != nil {
 		return nil, err
 	}
 	if isTxn && fq.Ancestor() == nil {
@@ -169,8 +179,7 @@ func reduce(fq *ds.FinalizedQuery, aid, ns string, isTxn bool) (*reducedQuery, e
 	}
 
 	ret := &reducedQuery{
-		aid:          aid,
-		ns:           ns,
+		kc:           kc,
 		kind:         fq.Kind(),
 		suffixFormat: fq.Orders(),
 	}

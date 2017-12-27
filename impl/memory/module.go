@@ -1,11 +1,21 @@
-// Copyright 2016 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2016 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
 import (
-	"github.com/tetrafolium/gae/service/module"
+	"go.chromium.org/gae/service/module"
 	"golang.org/x/net/context"
 )
 
@@ -18,18 +28,18 @@ type moduleVersion struct {
 }
 
 type modImpl struct {
-	c            context.Context
 	numInstances map[moduleVersion]int
 }
 
 // useMod adds a Module interface to the context
 func useMod(c context.Context) context.Context {
-	return module.SetFactory(c, func(ic context.Context) module.Interface {
-		return &modImpl{ic, map[moduleVersion]int{}}
+	modMap := map[moduleVersion]int{}
+	return module.SetFactory(c, func(ic context.Context) module.RawInterface {
+		return &modImpl{modMap}
 	})
 }
 
-var _ = module.Interface((*modImpl)(nil))
+var _ = module.RawInterface((*modImpl)(nil))
 
 func (mod *modImpl) List() ([]string, error) {
 	return []string{"testModule1", "testModule2"}, nil
@@ -55,10 +65,5 @@ func (mod *modImpl) DefaultVersion(module string) (string, error) {
 	return "testVersion1", nil
 }
 
-func (mod *modImpl) Start(module, version string) error {
-	return nil
-}
-
-func (mod *modImpl) Stop(module, version string) error {
-	return nil
-}
+func (mod *modImpl) Start(module, version string) error { return nil }
+func (mod *modImpl) Stop(module, version string) error  { return nil }

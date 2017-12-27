@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 // Package dscache provides a transparent cache for RawDatastore which is
 // backed by Memcache.
@@ -157,4 +167,30 @@
 // datastore value, if it hasn't been fetched in the last
 // GlobalEnabledCheckInterval time (5 minutes). This equates to essentially once
 // per http request, per 5 minutes, per instance.
+//
+// AppEngine's memcache reserves the right to evict keys at any moment. This is
+// especially true for shared memcache, which is subject to pressures outside of
+// your application. When eviction happens due to memory pressure,
+// least-recently-used values are evicted first.
+//
+// https://cloud.google.com/appengine/docs/go/memcache/#Go_How_cached_data_expires
+//
+// Eviction presents a potential race window, as lock items that were put in
+// memcache may be evicted prior to the locked operations completing (or
+// failing), causing concurrent Get operations to cache bad data indefinitely.
+//
+// In practice, a dedicated memcache will be safe. LRU-based eviction means that
+// that locks recently added will almost certainly not be evicted before their
+// operations are complete, and a dedicated memcache lowers eviction pressure to
+// a single application's operation. Production systems that have data integrity
+// requirements are encouraged to use a dedicated memcache.
+//
+// Note that flusing memcache of a running application may also induce this
+// race. Flushes should be performed with this concern in mind.
+//
+// TODO: A potential mitigation to lock eviction poisoning is to use memcache
+// Statistics to identify the oldest memcache item and use that age to bound
+// the lifetime of cached datastore entries. This would cause dscache items
+// created around the time of a flush to expire quickly (instead of never),
+// bounding the period of time when poisoned data may reside in the cache.
 package dscache

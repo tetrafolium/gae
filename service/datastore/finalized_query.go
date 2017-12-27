@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
@@ -153,7 +163,7 @@ func (q *FinalizedQuery) IneqFilterProp() string {
 
 // IneqFilterLow returns the field name, operator and value for the low-side
 // inequality filter. If the returned field name is "", it means that there's
-// now lower inequality bound on this query.
+// no lower inequality bound on this query.
 //
 // If field is non-empty, op may have the values ">" or ">=".
 func (q *FinalizedQuery) IneqFilterLow() (field, op string, val Property) {
@@ -170,7 +180,7 @@ func (q *FinalizedQuery) IneqFilterLow() (field, op string, val Property) {
 
 // IneqFilterHigh returns the field name, operator and value for the high-side
 // inequality filter. If the returned field name is "", it means that there's
-// now upper inequality bound on this query.
+// no upper inequality bound on this query.
 //
 // If field is non-empty, op may have the values "<" or "<=".
 func (q *FinalizedQuery) IneqFilterHigh() (field, op string, val Property) {
@@ -312,8 +322,8 @@ func (q *FinalizedQuery) String() string {
 	return q.GQL()
 }
 
-// Valid returns true iff this FinalizedQuery is valid in the provided appID and
-// namespace.
+// Valid returns true iff this FinalizedQuery is valid in the provided
+// KeyContext's App ID and Namespace.
 //
 // This checks the ancestor filter (if any), as well as the inequality filters
 // if they filter on '__key__'.
@@ -321,18 +331,29 @@ func (q *FinalizedQuery) String() string {
 // In particular, it does NOT validate equality filters which happen to have
 // values of type PTKey, nor does it validate inequality filters that happen to
 // have values of type PTKey (but don't filter on the magic '__key__' field).
-func (q *FinalizedQuery) Valid(aid, ns string) error {
+func (q *FinalizedQuery) Valid(kc KeyContext) error {
 	anc := q.Ancestor()
-	if anc != nil && (!anc.Valid(false, aid, ns) || anc.Incomplete()) {
-		return ErrInvalidKey
+	if anc != nil {
+		switch {
+		case !anc.Valid(false, kc):
+			return MakeErrInvalidKey("ancestor [%s] is not valid in context %s", anc, kc).Err()
+		case anc.IsIncomplete():
+			return MakeErrInvalidKey("ancestor [%s] is incomplete", anc).Err()
+		}
 	}
 
 	if q.ineqFiltProp == "__key__" {
-		if q.ineqFiltLowSet && !q.ineqFiltLow.Value().(*Key).Valid(false, aid, ns) {
-			return ErrInvalidKey
+		if q.ineqFiltLowSet {
+			if k := q.ineqFiltLow.Value().(*Key); !k.Valid(false, kc) {
+				return MakeErrInvalidKey(
+					"low inequality filter key [%s] is not valid in context %s", k, kc).Err()
+			}
 		}
-		if q.ineqFiltHighSet && !q.ineqFiltHigh.Value().(*Key).Valid(false, aid, ns) {
-			return ErrInvalidKey
+		if q.ineqFiltHighSet {
+			if k := q.ineqFiltHigh.Value().(*Key); !k.Valid(false, kc) {
+				return MakeErrInvalidKey(
+					"high inequality filter key [%s] is not valid in context %s", k, kc).Err()
+			}
 		}
 	}
 	return nil

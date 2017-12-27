@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
@@ -13,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/tetrafolium/gae/service/datastore/internal/protos/datastore"
+	pb "go.chromium.org/gae/service/datastore/internal/protos/datastore"
 )
 
 // KeyTok is a single token from a multi-part Key.
@@ -23,9 +33,9 @@ type KeyTok struct {
 	StringID string
 }
 
-// Incomplete returns true iff this token doesn't define either a StringID or
+// IsIncomplete returns true iff this token doesn't define either a StringID or
 // an IntID.
-func (k KeyTok) Incomplete() bool {
+func (k KeyTok) IsIncomplete() bool {
 	return k.StringID == "" && k.IntID == 0
 }
 
@@ -53,48 +63,56 @@ func (k KeyTok) Less(other KeyTok) bool {
 	return a.Less(&b)
 }
 
-// Key is the type used for all datastore operations.
-type Key struct {
-	appID     string
-	namespace string
-	toks      []KeyTok
+// KeyContext is the context in which a key is generated.
+type KeyContext struct {
+	AppID     string
+	Namespace string
 }
 
-var _ interface {
-	json.Marshaler
-	json.Unmarshaler
-} = (*Key)(nil)
+// MkKeyContext is a helper function to create a new KeyContext.
+//
+// It is preferable to field-based struct initialization because, as a function,
+// it has the ability to enforce an exact number of parameters.
+func MkKeyContext(appID, namespace string) KeyContext {
+	return KeyContext{AppID: appID, Namespace: namespace}
+}
 
-// NewKeyToks creates a new Key. It is the Key implementation returned from the
-// various PropertyMap serialization routines, as well as the native key
+// Matches returns true iff the AppID and Namespace parameters are the same for
+// the two KeyContext instances.
+func (kc KeyContext) Matches(o KeyContext) bool {
+	return (kc.AppID == o.AppID && kc.Namespace == o.Namespace)
+}
+
+// NewKeyToks creates a new Key. It is the Key implementation returned from
+// the various PropertyMap serialization routines, as well as the native key
 // implementation for the in-memory implementation of gae.
 //
-// See Interface.NewKeyToks for a version of this function which automatically
+// See NewKeyToks for a version of this function which automatically
 // provides aid and ns.
-func NewKeyToks(aid, ns string, toks []KeyTok) *Key {
+func (kc KeyContext) NewKeyToks(toks []KeyTok) *Key {
 	if len(toks) == 0 {
 		return nil
 	}
 	newToks := make([]KeyTok, len(toks))
 	copy(newToks, toks)
-	return &Key{aid, ns, newToks}
+	return &Key{kc, newToks}
 }
 
-// NewKey is a wrapper around NewToks which has an interface similar
-// to NewKey in the SDK.
+// NewKey is a wrapper around NewToks which has an interface similar to NewKey
+// in the SDK.
 //
-// See Interface.NewKey for a version of this function which automatically
-// provides aid and ns.
-func NewKey(aid, ns, kind, stringID string, intID int64, parent *Key) *Key {
+// See NewKey for a version of this function which automatically provides aid
+// and ns.
+func (kc KeyContext) NewKey(kind, stringID string, intID int64, parent *Key) *Key {
 	if parent == nil {
-		return &Key{aid, ns, []KeyTok{{kind, intID, stringID}}}
+		return &Key{kc, []KeyTok{{kind, intID, stringID}}}
 	}
 
 	toks := parent.toks
 	newToks := make([]KeyTok, len(toks), len(toks)+1)
 	copy(newToks, toks)
 	newToks = append(newToks, KeyTok{kind, intID, stringID})
-	return &Key{aid, ns, newToks}
+	return &Key{kc, newToks}
 }
 
 // MakeKey is a convenience function for manufacturing a *Key. It should only
@@ -102,7 +120,7 @@ func NewKey(aid, ns, kind, stringID string, intID int64, parent *Key) *Key {
 //
 // elems is pairs of (string, string|int|int32|int64) pairs, which correspond to
 // Kind/id pairs. Example:
-//   MakeKey("aid", "namespace", "Parent", 1, "Child", "id")
+//   MkKeyContext("aid", "namespace").MakeKey("Parent", 1, "Child", "id")
 //
 // Would create the key:
 //   aid:namespace:/Parent,1/Child,id
@@ -110,9 +128,9 @@ func NewKey(aid, ns, kind, stringID string, intID int64, parent *Key) *Key {
 // If elems is not parsable (e.g. wrong length, wrong types, etc.) this method
 // will panic.
 //
-// See Interface.MakeKey for a version of this function which automatically
+// See MakeKey for a version of this function which automatically
 // provides aid and ns.
-func MakeKey(aid, ns string, elems ...interface{}) *Key {
+func (kc KeyContext) MakeKey(elems ...interface{}) *Key {
 	if len(elems) == 0 {
 		return nil
 	}
@@ -138,13 +156,28 @@ func MakeKey(aid, ns string, elems ...interface{}) *Key {
 			t.IntID = int64(x)
 		case int64:
 			t.IntID = int64(x)
+		case uint16:
+			t.IntID = int64(x)
+		case uint32:
+			t.IntID = int64(x)
 		default:
 			panic(fmt.Errorf("datastore.MakeKey: bad id: %v", x))
 		}
 	}
 
-	return NewKeyToks(aid, ns, toks)
+	return kc.NewKeyToks(toks)
 }
+
+// Key is the type used for all datastore operations.
+type Key struct {
+	kc   KeyContext
+	toks []KeyTok
+}
+
+var _ interface {
+	json.Marshaler
+	json.Unmarshaler
+} = (*Key)(nil)
 
 // NewKeyEncoded decodes and returns a *Key
 func NewKeyEncoded(encoded string) (ret *Key, err error) {
@@ -163,8 +196,7 @@ func NewKeyEncoded(encoded string) (ret *Key, err error) {
 		return
 	}
 
-	ret.appID = r.GetApp()
-	ret.namespace = r.GetNameSpace()
+	ret.kc = MkKeyContext(r.GetApp(), r.GetNameSpace())
 	ret.toks = make([]KeyTok, len(r.Path.Element))
 	for i, e := range r.Path.Element {
 		ret.toks[i] = KeyTok{
@@ -183,10 +215,16 @@ func (k *Key) LastTok() KeyTok {
 }
 
 // AppID returns the application ID that this Key is for.
-func (k *Key) AppID() string { return k.appID }
+func (k *Key) AppID() string { return k.kc.AppID }
 
 // Namespace returns the namespace that this Key is for.
-func (k *Key) Namespace() string { return k.namespace }
+func (k *Key) Namespace() string { return k.kc.Namespace }
+
+// KeyContext returns the KeyContext that this Key is using.
+func (k *Key) KeyContext() *KeyContext {
+	kc := k.kc
+	return &kc
+}
 
 // Kind returns the Kind of the child KeyTok
 func (k *Key) Kind() string { return k.toks[len(k.toks)-1].Kind }
@@ -201,7 +239,7 @@ func (k *Key) IntID() int64 { return k.toks[len(k.toks)-1].IntID }
 //   AID:NS:/Kind,id/Kind,id/...
 func (k *Key) String() string {
 	b := bytes.NewBuffer(make([]byte, 0, 512))
-	fmt.Fprintf(b, "%s:%s:", k.appID, k.namespace)
+	fmt.Fprintf(b, "%s:%s:", k.kc.AppID, k.kc.Namespace)
 	for _, t := range k.toks {
 		if t.StringID != "" {
 			fmt.Fprintf(b, "/%s,%q", t.Kind, t.StringID)
@@ -212,24 +250,25 @@ func (k *Key) String() string {
 	return b.String()
 }
 
-// Incomplete returns true iff k doesn't have an id yet.
-func (k *Key) Incomplete() bool {
-	return k.LastTok().Incomplete()
+// IsIncomplete returns true iff the last token of this Key doesn't define
+// either a StringID or an IntID.
+func (k *Key) IsIncomplete() bool {
+	return k.LastTok().IsIncomplete()
 }
 
-// Valid determines if a key is valid, according to a couple rules:
+// Valid determines if a key is valid, according to a couple of rules:
 //   - k is not nil
 //   - every token of k:
 //     - (if !allowSpecial) token's kind doesn't start with '__'
 //     - token's kind and appid are non-blank
 //     - token is not incomplete
 //   - all tokens have the same namespace and appid
-func (k *Key) Valid(allowSpecial bool, aid, ns string) bool {
-	if aid != k.appID || ns != k.namespace {
+func (k *Key) Valid(allowSpecial bool, kc KeyContext) bool {
+	if !kc.Matches(k.kc) {
 		return false
 	}
 	for _, t := range k.toks {
-		if t.Incomplete() {
+		if t.IsIncomplete() {
 			return false
 		}
 		if !allowSpecial && t.Special() {
@@ -247,12 +286,15 @@ func (k *Key) Valid(allowSpecial bool, aid, ns string) bool {
 
 // PartialValid returns true iff this key is suitable for use in a Put
 // operation. This is the same as Valid(k, false, ...), but also allowing k to
-// be Incomplete().
-func (k *Key) PartialValid(aid, ns string) bool {
-	if k.Incomplete() {
-		k = NewKey(k.AppID(), k.Namespace(), k.Kind(), "", 1, k.Parent())
+// be IsIncomplete().
+func (k *Key) PartialValid(kc KeyContext) bool {
+	if k.IsIncomplete() {
+		if !kc.Matches(k.kc) {
+			return false
+		}
+		k = kc.NewKey(k.Kind(), "", 1, k.Parent())
 	}
-	return k.Valid(false, aid, ns)
+	return k.Valid(false, kc)
 }
 
 // Parent returns the parent Key of this *Key, or nil. The parent
@@ -261,7 +303,7 @@ func (k *Key) Parent() *Key {
 	if len(k.toks) <= 1 {
 		return nil
 	}
-	return &Key{k.appID, k.namespace, k.toks[:len(k.toks)-1]}
+	return k.kc.NewKeyToks(k.toks[:len(k.toks)-1])
 }
 
 // MarshalJSON allows this key to be automatically marshaled by encoding/json.
@@ -289,11 +331,11 @@ func (k *Key) Encode() string {
 		}
 	}
 	var namespace *string
-	if k.namespace != "" {
-		namespace = &k.namespace
+	if ns := k.kc.Namespace; ns != "" {
+		namespace = &ns
 	}
 	r, err := proto.Marshal(&pb.Reference{
-		App:       &k.appID,
+		App:       &k.kc.AppID,
 		NameSpace: namespace,
 		Path: &pb.Path{
 			Element: e,
@@ -347,15 +389,15 @@ func (k *Key) Root() *Key {
 
 // Less returns true iff k would sort before other.
 func (k *Key) Less(other *Key) bool {
-	if k.appID < other.appID {
+	if k.kc.AppID < other.kc.AppID {
 		return true
-	} else if k.appID > other.appID {
+	} else if k.kc.AppID > other.kc.AppID {
 		return false
 	}
 
-	if k.namespace < other.namespace {
+	if k.kc.Namespace < other.kc.Namespace {
 		return true
-	} else if k.namespace > other.namespace {
+	} else if k.kc.Namespace > other.kc.Namespace {
 		return false
 	}
 
@@ -376,7 +418,7 @@ func (k *Key) Less(other *Key) bool {
 
 // HasAncestor returns true iff other is an ancestor of k (or if other == k).
 func (k *Key) HasAncestor(other *Key) bool {
-	if k.appID != other.appID || k.namespace != other.namespace {
+	if !k.kc.Matches(other.kc) {
 		return false
 	}
 	if len(k.toks) < len(other.toks) {
@@ -396,9 +438,9 @@ func (k *Key) HasAncestor(other *Key) bool {
 //   https://cloud.google.com/datastore/docs/apis/gql/gql_reference
 func (k *Key) GQL() string {
 	ret := &bytes.Buffer{}
-	fmt.Fprintf(ret, "KEY(DATASET(%s)", gqlQuoteString(k.appID))
-	if k.namespace != "" {
-		fmt.Fprintf(ret, ", NAMESPACE(%s)", gqlQuoteString(k.namespace))
+	fmt.Fprintf(ret, "KEY(DATASET(%s)", gqlQuoteString(k.kc.AppID))
+	if ns := k.kc.Namespace; ns != "" {
+		fmt.Fprintf(ret, ", NAMESPACE(%s)", gqlQuoteString(ns))
 	}
 	for _, t := range k.toks {
 		if t.IntID != 0 {
@@ -414,18 +456,55 @@ func (k *Key) GQL() string {
 }
 
 // Equal returns true iff the two keys represent identical key values.
-func (k *Key) Equal(other *Key) (ret bool) {
-	ret = (k.appID == other.appID &&
-		k.namespace == other.namespace &&
+func (k *Key) Equal(other *Key) bool {
+	return k.IncompleteEqual(other) && (k.LastTok() == other.LastTok())
+}
+
+// IncompleteEqual asserts that, were the two keys incomplete, they would be
+// equal.
+//
+// This asserts equality for the full lineage of the key, except for its last
+// token ID.
+func (k *Key) IncompleteEqual(other *Key) (ret bool) {
+	ret = (k.kc.Matches(other.kc) &&
 		len(k.toks) == len(other.toks))
 	if ret {
 		for i, t := range k.toks {
-			if ret = t == other.toks[i]; !ret {
-				return
+			if i == len(k.toks)-1 {
+				// Last token: check only Kind.
+				if ret = (t.Kind == other.toks[i].Kind); !ret {
+					return
+				}
+			} else {
+				if ret = t == other.toks[i]; !ret {
+					return
+				}
 			}
 		}
 	}
 	return
+}
+
+// Incomplete returns an incomplete version of the key. The ID fields of the
+// last token will be set to zero/empty.
+func (k *Key) Incomplete() *Key {
+	if k.IsIncomplete() {
+		return k
+	}
+	return k.kc.NewKey(k.Kind(), "", 0, k.Parent())
+}
+
+// WithID returns the key generated by setting the ID of its last token to
+// the specified value.
+//
+// To generate this, k is reduced to its Incomplete form, then populated with a
+// new ID. The resulting key will have the same token linage as k (i.e., will
+// be IncompleteEqual).
+func (k *Key) WithID(stringID string, intID int64) *Key {
+	if k.StringID() == stringID && k.IntID() == intID {
+		return k
+	}
+	return k.kc.NewKey(k.Kind(), stringID, intID, k.Parent())
 }
 
 // Split componentizes the key into pieces (AppID, Namespace and tokens)
@@ -435,8 +514,8 @@ func (k *Key) Equal(other *Key) (ret bool) {
 // toks is guaranteed to be empty if and only if k is nil. If k is non-nil then
 // it contains at least one token.
 func (k *Key) Split() (appID, namespace string, toks []KeyTok) {
-	appID = k.appID
-	namespace = k.namespace
+	appID = k.kc.AppID
+	namespace = k.kc.Namespace
 	toks = make([]KeyTok, len(k.toks))
 	copy(toks, k.toks)
 	return
@@ -447,8 +526,8 @@ func (k *Key) Split() (appID, namespace string, toks []KeyTok) {
 // It uses https://cloud.google.com/appengine/articles/storage_breakdown?csw=1
 // as a guide for these values.
 func (k *Key) EstimateSize() int64 {
-	ret := int64(len(k.appID))
-	ret += int64(len(k.namespace))
+	ret := int64(len(k.kc.AppID))
+	ret += int64(len(k.kc.Namespace))
 	for _, t := range k.toks {
 		ret += int64(len(t.Kind))
 		if t.StringID != "" {

@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -9,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	ds "github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/datastore/serialize"
-	"github.com/luci/gkvlite"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/datastore/serialize"
+
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -41,9 +51,9 @@ var rowGenTestCases = []struct {
 	{
 		name: "simple including builtins",
 		pmap: ds.PropertyMap{
-			"wat":  {propNI("thing"), prop("hat"), prop(100)},
-			"nerd": {prop(103.7)},
-			"spaz": {propNI(false)},
+			"wat":  ds.PropertySlice{propNI("thing"), prop("hat"), prop(100)},
+			"nerd": prop(103.7),
+			"spaz": propNI(false),
 		},
 		withBuiltin: true,
 		idxs: []*ds.IndexDefinition{
@@ -95,12 +105,12 @@ var rowGenTestCases = []struct {
 	{
 		name: "complex",
 		pmap: ds.PropertyMap{
-			"yerp": {prop("hat"), prop(73.9)},
-			"wat": {
+			"yerp": ds.PropertySlice{prop("hat"), prop(73.9)},
+			"wat": ds.PropertySlice{
 				prop(rgenComplexTime),
 				prop([]byte("value")),
 				prop(rgenComplexKey)},
-			"spaz": {prop(nil), prop(false), prop(true)},
+			"spaz": ds.PropertySlice{prop(nil), prop(false), prop(true)},
 		},
 		idxs: []*ds.IndexDefinition{
 			indx("knd", "-wat", "nerd", "spaz"), // doesn't match, so empty
@@ -137,7 +147,7 @@ var rowGenTestCases = []struct {
 	{
 		name: "ancestor",
 		pmap: ds.PropertyMap{
-			"wat": {prop("sup")},
+			"wat": prop("sup"),
 		},
 		idxs: []*ds.IndexDefinition{
 			indx("knd!", "wat"),
@@ -204,20 +214,18 @@ func TestIndexRowGen(t *testing.T) {
 
 			Convey("indexEntries", func() {
 				sip := serialize.PropertyMapPartially(fakeKey, nil)
-				s := indexEntries(sip, "ns", defaultIndexes("knd", ds.PropertyMap(nil)))
-				numItems, _ := s.GetCollection("idx").GetTotals()
-				So(numItems, ShouldEqual, 1)
-				itm := s.GetCollection("idx").MinItem(false)
-				So(itm.Key, ShouldResemble, cat(indx("knd").PrepForIdxTable()))
-				numItems, _ = s.GetCollection("idx:ns:" + string(itm.Key)).GetTotals()
-				So(numItems, ShouldEqual, 1)
+				s := indexEntries(fakeKey, sip, defaultIndexes("knd", ds.PropertyMap(nil)))
+				So(countItems(s.Snapshot().GetCollection("idx")), ShouldEqual, 1)
+				itm := s.GetCollection("idx").MinItem()
+				So(itm.key, ShouldResemble, cat(indx("knd").PrepForIdxTable()))
+				So(countItems(s.Snapshot().GetCollection("idx:ns:"+string(itm.key))), ShouldEqual, 1)
 			})
 
 			Convey("defaultIndexes", func() {
 				pm := ds.PropertyMap{
-					"wat":  {propNI("thing"), prop("hat"), prop(100)},
-					"nerd": {prop(103.7)},
-					"spaz": {propNI(false)},
+					"wat":  ds.PropertySlice{propNI("thing"), prop("hat"), prop(100)},
+					"nerd": prop(103.7),
+					"spaz": propNI(false),
 				}
 				idxs := defaultIndexes("knd", pm)
 				So(len(idxs), ShouldEqual, 5)
@@ -243,20 +251,20 @@ func TestIndexEntries(t *testing.T) {
 			}
 
 			Convey(tc.name, func() {
-				store := (*memStore)(nil)
+				store := (memStore)(nil)
 				if tc.withBuiltin {
 					store = indexEntriesWithBuiltins(fakeKey, tc.pmap, tc.idxs)
 				} else {
 					sip := serialize.PropertyMapPartially(fakeKey, tc.pmap)
-					store = indexEntries(sip, fakeKey.Namespace(), tc.idxs)
+					store = indexEntries(fakeKey, sip, tc.idxs)
 				}
 				for colName, vals := range tc.collections {
 					i := 0
-					coll := store.GetCollection(colName)
-					numItems, _ := coll.GetTotals()
-					So(numItems, ShouldEqual, len(tc.collections[colName]))
-					coll.VisitItemsAscend(nil, true, func(itm *gkvlite.Item) bool {
-						So(itm.Key, ShouldResemble, vals[i])
+					coll := store.Snapshot().GetCollection(colName)
+					So(countItems(coll), ShouldEqual, len(tc.collections[colName]))
+
+					coll.ForEachItem(func(k, _ []byte) bool {
+						So(k, ShouldResemble, vals[i])
 						i++
 						return true
 					})
@@ -283,16 +291,16 @@ var updateIndexesTests = []struct {
 		name: "basic",
 		data: []dumbItem{
 			{key("knd", 1), ds.PropertyMap{
-				"wat":  {prop(10)},
-				"yerp": {prop(10)}},
+				"wat":  prop(10),
+				"yerp": prop(10)},
 			},
 			{key("knd", 10), ds.PropertyMap{
-				"wat":  {prop(1)},
-				"yerp": {prop(200)}},
+				"wat":  prop(1),
+				"yerp": prop(200)},
 			},
 			{key("knd", 1), ds.PropertyMap{
-				"wat":  {prop(10)},
-				"yerp": {prop(202)}},
+				"wat":  prop(10),
+				"yerp": prop(202)},
 			},
 		},
 		expected: map[string][][]byte{
@@ -316,24 +324,24 @@ var updateIndexesTests = []struct {
 		idxs: []*ds.IndexDefinition{indx("knd", "yerp", "-wat")},
 		data: []dumbItem{
 			{key("knd", 1), ds.PropertyMap{
-				"wat":  {prop(10)},
-				"yerp": {prop(100)}},
+				"wat":  prop(10),
+				"yerp": prop(100)},
 			},
 			{key("knd", 10), ds.PropertyMap{
-				"wat":  {prop(1)},
-				"yerp": {prop(200)}},
+				"wat":  prop(1),
+				"yerp": prop(200)},
 			},
 			{key("knd", 11), ds.PropertyMap{
-				"wat":  {prop(20)},
-				"yerp": {prop(200)}},
+				"wat":  prop(20),
+				"yerp": prop(200)},
 			},
 			{key("knd", 14), ds.PropertyMap{
-				"wat":  {prop(20)},
-				"yerp": {prop(200)}},
+				"wat":  prop(20),
+				"yerp": prop(200)},
 			},
 			{key("knd", 1), ds.PropertyMap{
-				"wat":  {prop(10)},
-				"yerp": {prop(202)}},
+				"wat":  prop(10),
+				"yerp": prop(202)},
 			},
 		},
 		expected: map[string][][]byte{
@@ -354,7 +362,7 @@ func TestUpdateIndexes(t *testing.T) {
 		for _, tc := range updateIndexesTests {
 			Convey(tc.name, func() {
 				store := newMemStore()
-				idxColl := store.SetCollection("idx", nil)
+				idxColl := store.GetOrCreateCollection("idx")
 				for _, i := range tc.idxs {
 					idxColl.Set(cat(i.PrepForIdxTable()), []byte{})
 				}
@@ -369,11 +377,11 @@ func TestUpdateIndexes(t *testing.T) {
 				tmpLoader = nil
 
 				for colName, data := range tc.expected {
-					coll := store.GetCollection(colName)
+					coll := store.Snapshot().GetCollection(colName)
 					So(coll, ShouldNotBeNil)
 					i := 0
-					coll.VisitItemsAscend(nil, false, func(itm *gkvlite.Item) bool {
-						So(data[i], ShouldResemble, itm.Key)
+					coll.ForEachItem(func(k, _ []byte) bool {
+						So(data[i], ShouldResemble, k)
 						i++
 						return true
 					})

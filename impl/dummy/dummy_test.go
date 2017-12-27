@@ -1,20 +1,30 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package dummy
 
 import (
 	"testing"
 
-	dsS "github.com/tetrafolium/gae/service/datastore"
-	infoS "github.com/tetrafolium/gae/service/info"
-	mailS "github.com/tetrafolium/gae/service/mail"
-	mcS "github.com/tetrafolium/gae/service/memcache"
-	modS "github.com/tetrafolium/gae/service/module"
-	tqS "github.com/tetrafolium/gae/service/taskqueue"
-	userS "github.com/tetrafolium/gae/service/user"
 	. "github.com/smartystreets/goconvey/convey"
+	dsS "go.chromium.org/gae/service/datastore"
+	infoS "go.chromium.org/gae/service/info"
+	mailS "go.chromium.org/gae/service/mail"
+	mcS "go.chromium.org/gae/service/memcache"
+	modS "go.chromium.org/gae/service/module"
+	tqS "go.chromium.org/gae/service/taskqueue"
+	userS "go.chromium.org/gae/service/user"
 	"golang.org/x/net/context"
 )
 
@@ -31,74 +41,84 @@ func TestContextAccess(t *testing.T) {
 		c := context.Background()
 
 		Convey("blank", func() {
-			So(dsS.GetRaw(c), ShouldBeNil)
-			So(mcS.GetRaw(c), ShouldBeNil)
-			So(tqS.GetRaw(c), ShouldBeNil)
-			So(infoS.Get(c), ShouldBeNil)
+			So(dsS.Raw(c), ShouldBeNil)
+			So(mcS.Raw(c), ShouldBeNil)
+			So(tqS.Raw(c), ShouldBeNil)
+			So(infoS.Raw(c), ShouldBeNil)
 		})
 
 		// needed for everything else
 		c = infoS.Set(c, Info())
 
 		Convey("Info", func() {
-			So(infoS.Get(c), ShouldNotBeNil)
+			So(infoS.Raw(c), ShouldNotBeNil)
 			So(func() {
 				defer p()
-				infoS.Get(c).Datacenter()
+				infoS.Raw(c).Datacenter()
 			}, ShouldPanicWith, "dummy: method Info.Datacenter is not implemented")
+
+			Convey("ModuleHostname", func() {
+				host, err := infoS.ModuleHostname(c, "", "", "")
+				So(err, ShouldBeNil)
+				So(host, ShouldEqual, "version.module.dummy-appid.example.com")
+
+				host, err = infoS.ModuleHostname(c, "wut", "10", "")
+				So(err, ShouldBeNil)
+				So(host, ShouldEqual, "10.wut.dummy-appid.example.com")
+			})
 		})
 
 		Convey("Datastore", func() {
 			c = dsS.SetRaw(c, Datastore())
-			So(dsS.Get(c), ShouldNotBeNil)
+			So(dsS.Raw(c), ShouldNotBeNil)
 			So(func() {
 				defer p()
-				_, _ = dsS.Get(c).DecodeCursor("wut")
+				_, _ = dsS.Raw(c).DecodeCursor("wut")
 			}, ShouldPanicWith, "dummy: method Datastore.DecodeCursor is not implemented")
 		})
 
 		Convey("Memcache", func() {
 			c = mcS.SetRaw(c, Memcache())
-			So(mcS.Get(c), ShouldNotBeNil)
+			So(mcS.Raw(c), ShouldNotBeNil)
 			So(func() {
 				defer p()
-				_ = mcS.Get(c).Add(nil)
+				_ = mcS.Add(c, nil)
 			}, ShouldPanicWith, "dummy: method Memcache.AddMulti is not implemented")
 		})
 
 		Convey("TaskQueue", func() {
 			c = tqS.SetRaw(c, TaskQueue())
-			So(tqS.Get(c), ShouldNotBeNil)
+			So(tqS.Raw(c), ShouldNotBeNil)
 			So(func() {
 				defer p()
-				_ = tqS.Get(c).Purge("")
+				_ = tqS.Purge(c, "")
 			}, ShouldPanicWith, "dummy: method TaskQueue.Purge is not implemented")
 		})
 
 		Convey("User", func() {
 			c = userS.Set(c, User())
-			So(userS.Get(c), ShouldNotBeNil)
+			So(userS.Raw(c), ShouldNotBeNil)
 			So(func() {
 				defer p()
-				_ = userS.Get(c).IsAdmin()
+				_ = userS.IsAdmin(c)
 			}, ShouldPanicWith, "dummy: method User.IsAdmin is not implemented")
 		})
 
 		Convey("Mail", func() {
 			c = mailS.Set(c, Mail())
-			So(mailS.Get(c), ShouldNotBeNil)
+			So(mailS.Raw(c), ShouldNotBeNil)
 			So(func() {
 				defer p()
-				_ = mailS.Get(c).Send(nil)
+				_ = mailS.Send(c, nil)
 			}, ShouldPanicWith, "dummy: method Mail.Send is not implemented")
 		})
 
 		Convey("Module", func() {
 			c = modS.Set(c, Module())
-			So(modS.Get(c), ShouldNotBeNil)
+			So(modS.Raw(c), ShouldNotBeNil)
 			So(func() {
 				defer p()
-				modS.Get(c).List()
+				modS.List(c)
 			}, ShouldPanicWith, "dummy: method Module.List is not implemented")
 		})
 	})

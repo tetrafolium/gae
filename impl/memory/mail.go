@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -12,8 +22,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tetrafolium/gae/service/mail"
-	"github.com/tetrafolium/gae/service/user"
+	"go.chromium.org/gae/service/mail"
+	"go.chromium.org/gae/service/user"
 	"golang.org/x/net/context"
 )
 
@@ -26,23 +36,23 @@ type mailData struct {
 
 // mailImpl is a contextual pointer to the current mailData.
 type mailImpl struct {
-	data *mailData
+	context.Context
 
-	c context.Context
+	data *mailData
 }
 
-var _ mail.Interface = (*mailImpl)(nil)
+var _ mail.RawInterface = (*mailImpl)(nil)
 
-// useMail adds a mail.Interface implementation to context, accessible
-// by mail.Get(c)
+// useMail adds a mail.RawInterface implementation to context, accessible
+// by mail.Raw(c) or the exported mail methods.
 func useMail(c context.Context) context.Context {
 	data := &mailData{
 		admins:      []string{"admin@example.com"},
 		adminsPlain: []string{"admin@example.com"},
 	}
 
-	return mail.SetFactory(c, func(c context.Context) mail.Interface {
-		return &mailImpl{data, c}
+	return mail.SetFactory(c, func(ic context.Context) mail.RawInterface {
+		return &mailImpl{ic, data}
 	})
 }
 
@@ -128,8 +138,7 @@ func checkMessage(msg *mail.TestMessage, adminsPlain []string, user string) erro
 
 func (m *mailImpl) sendImpl(msg *mail.Message) error {
 	email := ""
-	userSvc := user.Get(m.c)
-	if u := userSvc.Current(); u != nil {
+	if u := user.Current(m); u != nil {
 		email = u.Email
 	}
 
@@ -164,9 +173,7 @@ func (m *mailImpl) SendToAdmins(msg *mail.Message) error {
 	return m.sendImpl(msg)
 }
 
-func (m *mailImpl) Testable() mail.Testable {
-	return m
-}
+func (m *mailImpl) GetTestable() mail.Testable { return m }
 
 func (m *mailImpl) SetAdminEmails(emails ...string) {
 	adminsPlain := make([]string, len(emails))

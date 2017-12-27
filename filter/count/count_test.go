@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package count
 
@@ -8,16 +18,16 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/tetrafolium/gae/filter/featureBreaker"
-	"github.com/tetrafolium/gae/impl/memory"
-	"github.com/tetrafolium/gae/service/datastore"
-	"github.com/tetrafolium/gae/service/info"
-	"github.com/tetrafolium/gae/service/mail"
-	"github.com/tetrafolium/gae/service/memcache"
-	"github.com/tetrafolium/gae/service/taskqueue"
-	"github.com/tetrafolium/gae/service/user"
-	. "github.com/luci/luci-go/common/testing/assertions"
 	. "github.com/smartystreets/goconvey/convey"
+	"go.chromium.org/gae/filter/featureBreaker"
+	"go.chromium.org/gae/impl/memory"
+	ds "go.chromium.org/gae/service/datastore"
+	"go.chromium.org/gae/service/info"
+	"go.chromium.org/gae/service/mail"
+	"go.chromium.org/gae/service/memcache"
+	"go.chromium.org/gae/service/taskqueue"
+	"go.chromium.org/gae/service/user"
+	. "go.chromium.org/luci/common/testing/assertions"
 	"golang.org/x/net/context"
 )
 
@@ -53,24 +63,22 @@ func TestCount(t *testing.T) {
 		So(c, ShouldNotBeNil)
 		So(ctr, ShouldNotBeNil)
 
-		ds := datastore.Get(c)
-		vals := []datastore.PropertyMap{{
-			"Val":  {datastore.MkProperty(100)},
-			"$key": {datastore.MkPropertyNI(ds.NewKey("Kind", "", 1, nil))},
+		vals := []ds.PropertyMap{{
+			"Val":  ds.MkProperty(100),
+			"$key": ds.MkPropertyNI(ds.NewKey(c, "Kind", "", 1, nil)),
 		}}
 
 		Convey("Calling a ds function should reflect in counter", func() {
-			So(ds.PutMulti(vals), ShouldBeNil)
+			So(ds.Put(c, vals), ShouldBeNil)
 			So(ctr.PutMulti.Successes(), ShouldEqual, 1)
 
 			Convey("effects are cumulative", func() {
-				So(ds.PutMulti(vals), ShouldBeNil)
+				So(ds.Put(c, vals), ShouldBeNil)
 				So(ctr.PutMulti.Successes(), ShouldEqual, 2)
 
 				Convey("even within transactions", func() {
-					die(ds.RunInTransaction(func(c context.Context) error {
-						ds := datastore.Get(c)
-						So(ds.PutMulti(append(vals, vals[0])), ShouldBeNil)
+					die(ds.RunInTransaction(c, func(c context.Context) error {
+						So(ds.Put(c, append(vals, vals[0])), ShouldBeNil)
 						return nil
 					}, nil))
 				})
@@ -80,17 +88,26 @@ func TestCount(t *testing.T) {
 		Convey("errors count against errors", func() {
 			fb.BreakFeatures(nil, "GetMulti")
 
-			So(ds.GetMulti(vals), ShouldErrLike, `"GetMulti" is broken`)
+			So(ds.Get(c, vals), ShouldErrLike, `"GetMulti" is broken`)
 			So(ctr.GetMulti.Errors(), ShouldEqual, 1)
 
 			fb.UnbreakFeatures("GetMulti")
 
-			So(ds.PutMulti(vals), ShouldBeNil)
+			So(ds.Put(c, vals), ShouldBeNil)
 
-			die(ds.GetMulti(vals))
+			die(ds.Get(c, vals))
 			So(ctr.GetMulti.Errors(), ShouldEqual, 1)
 			So(ctr.GetMulti.Successes(), ShouldEqual, 1)
 			So(ctr.GetMulti.Total(), ShouldEqual, 2)
+		})
+
+		Convey(`datastore.Stop does not count as an error`, func() {
+			fb.BreakFeatures(ds.Stop, "GetMulti")
+
+			So(ds.Get(c, vals), ShouldBeNil)
+			So(ctr.GetMulti.Successes(), ShouldEqual, 1)
+			So(ctr.GetMulti.Errors(), ShouldEqual, 0)
+			So(ctr.GetMulti.Total(), ShouldEqual, 1)
 		})
 	})
 
@@ -98,14 +115,13 @@ func TestCount(t *testing.T) {
 		c, ctr := FilterMC(memory.Use(context.Background()))
 		So(c, ShouldNotBeNil)
 		So(ctr, ShouldNotBeNil)
-		mc := memcache.Get(c)
 
-		die(mc.Set(mc.NewItem("hello").SetValue([]byte("sup"))))
+		die(memcache.Set(c, memcache.NewItem(c, "hello").SetValue([]byte("sup"))))
 
-		_, err := mc.Get("Wat")
+		_, err := memcache.GetKey(c, "Wat")
 		So(err, ShouldNotBeNil)
 
-		_, err = mc.Get("hello")
+		_, err = memcache.GetKey(c, "hello")
 		die(err)
 
 		So(ctr.SetMulti, shouldHaveSuccessesAndErrors, 1, 0)
@@ -117,10 +133,9 @@ func TestCount(t *testing.T) {
 		c, ctr := FilterTQ(memory.Use(context.Background()))
 		So(c, ShouldNotBeNil)
 		So(ctr, ShouldNotBeNil)
-		tq := taskqueue.Get(c)
 
-		die(tq.Add(&taskqueue.Task{Name: "wat"}, ""))
-		So(tq.Add(&taskqueue.Task{Name: "wat"}, "DNE_QUEUE"),
+		die(taskqueue.Add(c, "", &taskqueue.Task{Name: "wat"}))
+		So(taskqueue.Add(c, "DNE_QUEUE", &taskqueue.Task{Name: "wat"}),
 			ShouldErrLike, "UNKNOWN_QUEUE")
 
 		So(ctr.AddMulti, shouldHaveSuccessesAndErrors, 1, 1)
@@ -132,12 +147,10 @@ func TestCount(t *testing.T) {
 		So(c, ShouldNotBeNil)
 		So(ctr, ShouldNotBeNil)
 
-		gi := info.Get(c)
-
-		_, err := gi.Namespace("foo")
+		_, err := info.Namespace(c, "foo")
 		die(err)
 		fb.BreakFeatures(nil, "Namespace")
-		_, err = gi.Namespace("boom")
+		_, err = info.Namespace(c, "boom")
 		So(err, ShouldErrLike, `"Namespace" is broken`)
 
 		So(ctr.Namespace, shouldHaveSuccessesAndErrors, 1, 1)
@@ -149,12 +162,10 @@ func TestCount(t *testing.T) {
 		So(c, ShouldNotBeNil)
 		So(ctr, ShouldNotBeNil)
 
-		u := user.Get(c)
-
-		_, err := u.CurrentOAuth("foo")
+		_, err := user.CurrentOAuth(c, "foo")
 		die(err)
 		fb.BreakFeatures(nil, "CurrentOAuth")
-		_, err = u.CurrentOAuth("foo")
+		_, err = user.CurrentOAuth(c, "foo")
 		So(err, ShouldErrLike, `"CurrentOAuth" is broken`)
 
 		So(ctr.CurrentOAuth, shouldHaveSuccessesAndErrors, 1, 1)
@@ -166,9 +177,7 @@ func TestCount(t *testing.T) {
 		So(c, ShouldNotBeNil)
 		So(ctr, ShouldNotBeNil)
 
-		m := mail.Get(c)
-
-		err := m.Send(&mail.Message{
+		err := mail.Send(c, &mail.Message{
 			Sender: "admin@example.com",
 			To:     []string{"coolDood@example.com"},
 			Body:   "hi",
@@ -176,7 +185,7 @@ func TestCount(t *testing.T) {
 		die(err)
 
 		fb.BreakFeatures(nil, "Send")
-		err = m.Send(&mail.Message{
+		err = mail.Send(c, &mail.Message{
 			Sender: "admin@example.com",
 			To:     []string{"coolDood@example.com"},
 			Body:   "hi",
@@ -197,12 +206,11 @@ func ExampleFilterRDS() {
 	// functions use ds from the context like normal... they don't need to know
 	// that there are any filters at all.
 	someCalledFunc := func(c context.Context) {
-		ds := datastore.Get(c)
-		vals := []datastore.PropertyMap{{
-			"FieldName": {datastore.MkProperty(100)},
-			"$key":      {datastore.MkProperty(ds.NewKey("Kind", "", 1, nil))}},
+		vals := []ds.PropertyMap{{
+			"FieldName": ds.MkProperty(100),
+			"$key":      ds.MkProperty(ds.NewKey(c, "Kind", "", 1, nil))},
 		}
-		if err := ds.PutMulti(vals); err != nil {
+		if err := ds.Put(c, vals); err != nil {
 			panic(err)
 		}
 	}

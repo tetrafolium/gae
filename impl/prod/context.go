@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package prod
 
@@ -11,10 +21,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/tetrafolium/gae/service/info"
-	"github.com/tetrafolium/gae/service/urlfetch"
+	"go.chromium.org/gae/service/urlfetch"
 	"golang.org/x/net/context"
-	gOAuth "github.com/tetrafolium/oauth2/google"
+	gOAuth "golang.org/x/oauth2/google"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/remote_api"
 )
@@ -29,67 +38,53 @@ var RemoteAPIScopes = []string{
 type key int
 
 var (
-	prodContextKey      key
-	prodContextNoTxnKey key = 1
-	probeCacheKey       key = 2
+	prodStateKey  = "contains the current *prodState"
+	probeCacheKey = "contains the current *infoProbeCache"
 )
 
-// AEContext retrieves the raw "google.golang.org/appengine" compatible Context.
+// getAEContext retrieves the raw "google.golang.org/appengine" compatible
+// Context.
 //
-// It also transfers deadline of `c` to AE context, since deadline is used for
-// RPCs. Doesn't transfer cancelation ability though (since it's ignored by GAE
-// anyway).
-func AEContext(c context.Context) context.Context {
-	aeCtx, _ := c.Value(prodContextKey).(context.Context)
-	if aeCtx == nil {
-		return nil
-	}
-	if deadline, ok := c.Deadline(); ok {
-		aeCtx, _ = context.WithDeadline(aeCtx, deadline)
-	}
-	return aeCtx
-}
-
-// AEContextNoTxn retrieves the raw "google.golang.org/appengine" compatible
-// Context that's not part of a transaction.
-func AEContextNoTxn(c context.Context) context.Context {
-	aeCtx, _ := c.Value(prodContextNoTxnKey).(context.Context)
-	if aeCtx == nil {
-		return nil
-	}
-	aeCtx, err := appengine.Namespace(aeCtx, info.Get(c).GetNamespace())
-	if err != nil {
-		panic(err)
-	}
-	if deadline, ok := c.Deadline(); ok {
-		aeCtx, _ = context.WithDeadline(aeCtx, deadline)
-	}
-	return aeCtx
+// This is an independent Context chain from `c`. In an attempt to maintain user
+// expectations, the deadline of `c` is transferred to the returned Context,
+// RPCs. Cancelation is not transferred.
+func getAEContext(c context.Context) context.Context {
+	ps := getProdState(c)
+	return ps.context(c)
 }
 
 func setupAECtx(c, aeCtx context.Context) context.Context {
-	c = context.WithValue(c, prodContextKey, aeCtx)
-	c = context.WithValue(c, prodContextNoTxnKey, aeCtx)
+	c = withProdState(c, prodState{
+		ctx:      aeCtx,
+		noTxnCtx: aeCtx,
+	})
 	return useModule(useMail(useUser(useURLFetch(useRDS(useMC(useTQ(useGI(useLogging(c)))))))))
 }
 
 // Use adds production implementations for all the gae services to the
-// context.
+// context. The implementations are all backed by the real appengine SDK
+// functionality.
 //
 // The services added are:
 //   - github.com/luci-go/common/logging
-//   - github.com/tetrafolium/gae/service/datastore
-//   - github.com/tetrafolium/gae/service/info
-//   - github.com/tetrafolium/gae/service/mail
-//   - github.com/tetrafolium/gae/service/memcache
-//   - github.com/tetrafolium/gae/service/module
-//   - github.com/tetrafolium/gae/service/taskqueue
-//   - github.com/tetrafolium/gae/service/urlfetch
-//   - github.com/tetrafolium/gae/service/user
+//   - go.chromium.org/gae/service/datastore
+//   - go.chromium.org/gae/service/info
+//   - go.chromium.org/gae/service/mail
+//   - go.chromium.org/gae/service/memcache
+//   - go.chromium.org/gae/service/module
+//   - go.chromium.org/gae/service/taskqueue
+//   - go.chromium.org/gae/service/urlfetch
+//   - go.chromium.org/gae/service/user
 //
 // These can be retrieved with the <service>.Get functions.
 //
-// The implementations are all backed by the real appengine SDK functionality,
+// It is important to note that this DOES NOT install the AppEngine SDK into the
+// supplied Context. In general, using the raw AppEngine SDK to access a service
+// that is covered by luci/gae is dangerous, leading to a number of potential
+// pitfalls including inconsistent transaction management and data corruption.
+//
+// Users who wish to access the raw AppEngine SDK must derive their own
+// AppEngine Context at their own risk.
 func Use(c context.Context, r *http.Request) context.Context {
 	return setupAECtx(c, appengine.NewContext(r))
 }
@@ -117,11 +112,16 @@ func Use(c context.Context, r *http.Request) context.Context {
 //       - "https://www.googleapis.com/auth/appengine.apis"
 //       - "https://www.googleapis.com/auth/userinfo.email"
 //       - "https://www.googleapis.com/auth/cloud.platform"
+//
+// It is important to note that this DOES NOT install the AppEngine SDK into the
+// supplied Context. See the warning in Use for more information.
 func UseRemote(inOutCtx *context.Context, host string, client *http.Client) (err error) {
 	if client == nil {
+		aeCtx := getAEContext(*inOutCtx)
+
 		if strings.HasPrefix(host, "localhost") {
 			transp := http.DefaultTransport
-			if aeCtx := AEContextNoTxn(*inOutCtx); aeCtx != nil {
+			if aeCtx != nil {
 				transp = urlfetch.Get(*inOutCtx)
 			}
 
@@ -143,7 +143,6 @@ func UseRemote(inOutCtx *context.Context, host string, client *http.Client) (err
 			}
 			defer rsp.Body.Close()
 		} else {
-			aeCtx := AEContextNoTxn(*inOutCtx)
 			if aeCtx == nil {
 				aeCtx = context.Background()
 			}
@@ -160,4 +159,49 @@ func UseRemote(inOutCtx *context.Context, host string, client *http.Client) (err
 	}
 	*inOutCtx = setupAECtx(*inOutCtx, aeCtx)
 	return nil
+}
+
+// prodState is the current production state.
+type prodState struct {
+	// ctx is the current derived GAE context.
+	ctx context.Context
+
+	// noTxnCtx is a Context maintained alongside ctx. When a transaction is
+	// entered, ctx will be updated, but noTxnCtx will not, allowing extra-
+	// transactional Context access.
+	noTxnCtx context.Context
+
+	// inTxn if true if this is in a transaction, false otherwise.
+	inTxn bool
+}
+
+func getProdState(c context.Context) prodState {
+	if v := c.Value(&prodStateKey).(*prodState); v != nil {
+		return *v
+	}
+	return prodState{}
+}
+
+func withProdState(c context.Context, ps prodState) context.Context {
+	return context.WithValue(c, &prodStateKey, &ps)
+}
+
+// context returns the current AppEngine-bound Context. Prior to returning,
+// the deadline from "c" (if any) is applied.
+//
+// Note that this does not (currently) apply any other Done state or propagate
+// cancellation from "c".
+//
+// Tracking at:
+// https://go.chromium.org/gae/issues/59
+func (ps *prodState) context(c context.Context) context.Context {
+	aeCtx := ps.ctx
+	if aeCtx == nil {
+		return nil
+	}
+
+	if deadline, ok := c.Deadline(); ok {
+		aeCtx, _ = context.WithDeadline(aeCtx, deadline)
+	}
+	return aeCtx
 }

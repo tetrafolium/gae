@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package count
 
@@ -9,7 +19,7 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/tetrafolium/gae/service/info"
+	"go.chromium.org/gae/service/info"
 )
 
 // InfoCounter is the counter object for the GlobalInfo service.
@@ -30,7 +40,6 @@ type InfoCounter struct {
 	ServiceAccount         Entry
 	VersionID              Entry
 	Namespace              Entry
-	MustNamespace          Entry
 	AccessToken            Entry
 	PublicCertificates     Entry
 	SignBytes              Entry
@@ -39,10 +48,10 @@ type InfoCounter struct {
 type infoCounter struct {
 	c *InfoCounter
 
-	gi info.Interface
+	gi info.RawInterface
 }
 
-var _ info.Interface = (*infoCounter)(nil)
+var _ info.RawInterface = (*infoCounter)(nil)
 
 func (g *infoCounter) AppID() string {
 	_ = g.c.AppID.up()
@@ -119,14 +128,10 @@ func (g *infoCounter) VersionID() string {
 	return g.gi.VersionID()
 }
 
-func (g *infoCounter) Namespace(namespace string) (context.Context, error) {
-	ret, err := g.gi.Namespace(namespace)
-	return ret, g.c.Namespace.up(err)
-}
-
-func (g *infoCounter) MustNamespace(namespace string) context.Context {
-	g.c.MustNamespace.up()
-	return g.gi.MustNamespace(namespace)
+func (g *infoCounter) Namespace(namespace string) (c context.Context, err error) {
+	c, err = g.gi.Namespace(namespace)
+	g.c.Namespace.up(err)
+	return
 }
 
 func (g *infoCounter) AccessToken(scopes ...string) (string, time.Time, error) {
@@ -144,10 +149,14 @@ func (g *infoCounter) SignBytes(bytes []byte) (string, []byte, error) {
 	return keyName, signature, g.c.SignBytes.up(err)
 }
 
+func (g *infoCounter) GetTestable() info.Testable {
+	return g.gi.GetTestable()
+}
+
 // FilterGI installs a counter GlobalInfo filter in the context.
 func FilterGI(c context.Context) (context.Context, *InfoCounter) {
 	state := &InfoCounter{}
-	return info.AddFilters(c, func(ic context.Context, gi info.Interface) info.Interface {
+	return info.AddFilters(c, func(ic context.Context, gi info.RawInterface) info.RawInterface {
 		return &infoCounter{state, gi}
 	}), state
 }

@@ -1,11 +1,21 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package count
 
 import (
-	"github.com/tetrafolium/gae/service/user"
+	"go.chromium.org/gae/service/user"
 	"golang.org/x/net/context"
 )
 
@@ -23,10 +33,10 @@ type UserCounter struct {
 type userCounter struct {
 	c *UserCounter
 
-	u user.Interface
+	u user.RawInterface
 }
 
-var _ user.Interface = (*userCounter)(nil)
+var _ user.RawInterface = (*userCounter)(nil)
 
 func (u *userCounter) Current() *user.User {
 	u.c.Current.up()
@@ -63,14 +73,14 @@ func (u *userCounter) OAuthConsumerKey() (string, error) {
 	return ret, u.c.OAuthConsumerKey.up(err)
 }
 
-func (u *userCounter) Testable() user.Testable {
-	return u.u.Testable()
+func (u *userCounter) GetTestable() user.Testable {
+	return u.u.GetTestable()
 }
 
 // FilterUser installs a counter User filter in the context.
 func FilterUser(c context.Context) (context.Context, *UserCounter) {
 	state := &UserCounter{}
-	return user.AddFilters(c, func(ic context.Context, u user.Interface) user.Interface {
+	return user.AddFilters(c, func(ic context.Context, u user.RawInterface) user.RawInterface {
 		return &userCounter{state, u}
 	}), state
 }

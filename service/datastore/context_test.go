@@ -1,18 +1,31 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package datastore
 
 import (
+	"strconv"
 	"testing"
 
-	"github.com/tetrafolium/gae/service/info"
-	. "github.com/smartystreets/goconvey/convey"
+	"go.chromium.org/gae/service/info"
+
 	"golang.org/x/net/context"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
-type fakeInfo struct{ info.Interface }
+type fakeInfo struct{ info.RawInterface }
 
 func (fakeInfo) GetNamespace() string        { return "ns" }
 func (fakeInfo) AppID() string               { return "aid" }
@@ -23,13 +36,16 @@ type fakeService struct{ RawInterface }
 type fakeFilt struct{ RawInterface }
 
 func (f fakeService) DecodeCursor(s string) (Cursor, error) {
-	return fakeCursor(s), nil
+	v, err := strconv.Atoi(s)
+	return fakeCursor(v), err
 }
 
-type fakeCursor string
+func (f fakeService) Constraints() Constraints { return Constraints{} }
+
+type fakeCursor int
 
 func (f fakeCursor) String() string {
-	return string(f)
+	return strconv.Itoa(int(f))
 }
 
 func TestServices(t *testing.T) {
@@ -38,14 +54,14 @@ func TestServices(t *testing.T) {
 	Convey("Test service interfaces", t, func() {
 		c := context.Background()
 		Convey("without adding anything", func() {
-			So(GetRaw(c), ShouldBeNil)
+			So(Raw(c), ShouldBeNil)
 		})
 
 		Convey("adding a basic implementation", func() {
 			c = SetRaw(info.Set(c, fakeInfo{}), fakeService{})
 
 			Convey("lets you pull them back out", func() {
-				So(GetRaw(c), ShouldResemble, &checkFilter{fakeService{}, "s~aid", "ns"})
+				So(Raw(c), ShouldHaveSameTypeAs, &checkFilter{})
 			})
 
 			Convey("and lets you add filters", func() {
@@ -53,9 +69,9 @@ func TestServices(t *testing.T) {
 					return fakeFilt{rds}
 				})
 
-				curs, err := Get(c).DecodeCursor("pants")
+				curs, err := DecodeCursor(c, "123")
 				So(err, ShouldBeNil)
-				So(curs.String(), ShouldEqual, "pants")
+				So(curs.String(), ShouldEqual, "123")
 			})
 		})
 		Convey("adding zero filters does nothing", func() {

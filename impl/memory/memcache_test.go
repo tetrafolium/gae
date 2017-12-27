@@ -1,6 +1,16 @@
-// Copyright 2015 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright 2015 The LUCI Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package memory
 
@@ -8,11 +18,15 @@ import (
 	"testing"
 	"time"
 
-	mcS "github.com/tetrafolium/gae/service/memcache"
-	"github.com/luci/luci-go/common/clock/testclock"
-	. "github.com/luci/luci-go/common/testing/assertions"
-	. "github.com/smartystreets/goconvey/convey"
+	"go.chromium.org/gae/service/info"
+	mc "go.chromium.org/gae/service/memcache"
+
+	"go.chromium.org/luci/common/clock/testclock"
+	. "go.chromium.org/luci/common/testing/assertions"
+
 	"golang.org/x/net/context"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestMemcache(t *testing.T) {
@@ -22,16 +36,15 @@ func TestMemcache(t *testing.T) {
 		now := time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC)
 		c, tc := testclock.UseTime(context.Background(), now)
 		c = Use(c)
-		mc := mcS.Get(c)
 
 		Convey("implements MCSingleReadWriter", func() {
 			Convey("Add", func() {
-				itm := (mc.NewItem("sup").
+				itm := (mc.NewItem(c, "sup").
 					SetValue([]byte("cool")).
 					SetExpiration(time.Second))
-				So(mc.Add(itm), ShouldBeNil)
+				So(mc.Add(c, itm), ShouldBeNil)
 				Convey("which rejects objects already there", func() {
-					So(mc.Add(itm), ShouldEqual, mcS.ErrNotStored)
+					So(mc.Add(c, itm), ShouldEqual, mc.ErrNotStored)
 				})
 			})
 
@@ -41,21 +54,21 @@ func TestMemcache(t *testing.T) {
 					value:      []byte("cool"),
 					expiration: time.Second,
 				}
-				So(mc.Add(itm), ShouldBeNil)
+				So(mc.Add(c, itm), ShouldBeNil)
 
 				testItem := &mcItem{
 					key:   "sup",
 					value: []byte("cool"),
 					CasID: 1,
 				}
-				getItm, err := mc.Get("sup")
+				getItm, err := mc.GetKey(c, "sup")
 				So(err, ShouldBeNil)
 				So(getItm, ShouldResemble, testItem)
 
 				Convey("which can expire", func() {
 					tc.Add(time.Second * 4)
-					getItm, err := mc.Get("sup")
-					So(err, ShouldEqual, mcS.ErrCacheMiss)
+					getItm, err := mc.GetKey(c, "sup")
+					So(err, ShouldEqual, mc.ErrCacheMiss)
 					So(getItm, ShouldResemble, &mcItem{key: "sup"})
 				})
 			})
@@ -67,16 +80,16 @@ func TestMemcache(t *testing.T) {
 						value:      []byte("cool"),
 						expiration: time.Second,
 					}
-					So(mc.Add(itm), ShouldBeNil)
+					So(mc.Add(c, itm), ShouldBeNil)
 
-					So(mc.Delete("sup"), ShouldBeNil)
+					So(mc.Delete(c, "sup"), ShouldBeNil)
 
-					_, err := mc.Get("sup")
-					So(err, ShouldEqual, mcS.ErrCacheMiss)
+					_, err := mc.GetKey(c, "sup")
+					So(err, ShouldEqual, mc.ErrCacheMiss)
 				})
 
 				Convey("but not if it's not there", func() {
-					So(mc.Delete("sup"), ShouldEqual, mcS.ErrCacheMiss)
+					So(mc.Delete(c, "sup"), ShouldEqual, mc.ErrCacheMiss)
 				})
 			})
 
@@ -86,107 +99,107 @@ func TestMemcache(t *testing.T) {
 					value:      []byte("cool"),
 					expiration: time.Second,
 				}
-				So(mc.Add(itm), ShouldBeNil)
+				So(mc.Add(c, itm), ShouldBeNil)
 
 				itm.SetValue([]byte("newp"))
-				So(mc.Set(itm), ShouldBeNil)
+				So(mc.Set(c, itm), ShouldBeNil)
 
 				testItem := &mcItem{
 					key:   "sup",
 					value: []byte("newp"),
 					CasID: 2,
 				}
-				getItm, err := mc.Get("sup")
+				getItm, err := mc.GetKey(c, "sup")
 				So(err, ShouldBeNil)
 				So(getItm, ShouldResemble, testItem)
 
 				Convey("Flush works too", func() {
-					So(mc.Flush(), ShouldBeNil)
-					_, err := mc.Get("sup")
-					So(err, ShouldEqual, mcS.ErrCacheMiss)
+					So(mc.Flush(c), ShouldBeNil)
+					_, err := mc.GetKey(c, "sup")
+					So(err, ShouldEqual, mc.ErrCacheMiss)
 				})
 			})
 
 			Convey("Set (nil) is equivalent to Set([]byte{})", func() {
-				So(mc.Set(mc.NewItem("bob")), ShouldBeNil)
+				So(mc.Set(c, mc.NewItem(c, "bob")), ShouldBeNil)
 
-				bob, err := mc.Get("bob")
+				bob, err := mc.GetKey(c, "bob")
 				So(err, ShouldBeNil)
 				So(bob.Value(), ShouldResemble, []byte{})
 			})
 
 			Convey("Increment", func() {
-				val, err := mc.Increment("num", 7, 2)
+				val, err := mc.Increment(c, "num", 7, 2)
 				So(err, ShouldBeNil)
 				So(val, ShouldEqual, 9)
 
 				Convey("IncrementExisting", func() {
-					val, err := mc.IncrementExisting("num", -2)
+					val, err := mc.IncrementExisting(c, "num", -2)
 					So(err, ShouldBeNil)
 					So(val, ShouldEqual, 7)
 
-					val, err = mc.IncrementExisting("num", -100)
+					val, err = mc.IncrementExisting(c, "num", -100)
 					So(err, ShouldBeNil)
 					So(val, ShouldEqual, 0)
 
-					_, err = mc.IncrementExisting("noexist", 2)
-					So(err, ShouldEqual, mcS.ErrCacheMiss)
+					_, err = mc.IncrementExisting(c, "noexist", 2)
+					So(err, ShouldEqual, mc.ErrCacheMiss)
 
-					So(mc.Set(mc.NewItem("text").SetValue([]byte("hello world, hooman!"))), ShouldBeNil)
+					So(mc.Set(c, mc.NewItem(c, "text").SetValue([]byte("hello world, hooman!"))), ShouldBeNil)
 
-					_, err = mc.IncrementExisting("text", 2)
+					_, err = mc.IncrementExisting(c, "text", 2)
 					So(err.Error(), ShouldContainSubstring, "got invalid current value")
 				})
 			})
 
 			Convey("CompareAndSwap", func() {
-				itm := mcS.Item(&mcItem{
+				itm := mc.Item(&mcItem{
 					key:        "sup",
 					value:      []byte("cool"),
 					expiration: time.Second * 2,
 				})
-				So(mc.Add(itm), ShouldBeNil)
+				So(mc.Add(c, itm), ShouldBeNil)
 
 				Convey("works after a Get", func() {
-					itm, err := mc.Get("sup")
+					itm, err := mc.GetKey(c, "sup")
 					So(err, ShouldBeNil)
 					So(itm.(*mcItem).CasID, ShouldEqual, 1)
 
 					itm.SetValue([]byte("newp"))
-					So(mc.CompareAndSwap(itm), ShouldBeNil)
+					So(mc.CompareAndSwap(c, itm), ShouldBeNil)
 				})
 
 				Convey("but fails if you don't", func() {
 					itm.SetValue([]byte("newp"))
-					So(mc.CompareAndSwap(itm), ShouldEqual, mcS.ErrCASConflict)
+					So(mc.CompareAndSwap(c, itm), ShouldEqual, mc.ErrCASConflict)
 				})
 
 				Convey("and fails if the item is expired/gone", func() {
 					tc.Add(3 * time.Second)
 					itm.SetValue([]byte("newp"))
-					So(mc.CompareAndSwap(itm), ShouldEqual, mcS.ErrNotStored)
+					So(mc.CompareAndSwap(c, itm), ShouldEqual, mc.ErrNotStored)
 				})
 			})
 		})
 
 		Convey("check that the internal implementation is sane", func() {
 			curTime := now
-			err := mc.Add(&mcItem{
+			err := mc.Add(c, &mcItem{
 				key:        "sup",
 				value:      []byte("cool"),
 				expiration: time.Second * 2,
 			})
 
 			for i := 0; i < 4; i++ {
-				_, err := mc.Get("sup")
+				_, err := mc.GetKey(c, "sup")
 				So(err, ShouldBeNil)
 			}
-			_, err = mc.Get("wot")
-			So(err, ShouldErrLike, mcS.ErrCacheMiss)
+			_, err = mc.GetKey(c, "wot")
+			So(err, ShouldErrLike, mc.ErrCacheMiss)
 
-			mci := mc.Raw().(*memcacheImpl)
+			mci := mc.Raw(c).(*memcacheImpl)
 
-			stats, err := mc.Stats()
+			stats, err := mc.Stats(c)
 			So(err, ShouldBeNil)
 			So(stats.Items, ShouldEqual, 1)
 			So(stats.Bytes, ShouldEqual, 4)
@@ -200,7 +213,7 @@ func TestMemcache(t *testing.T) {
 				casID:      1,
 			})
 
-			getItm, err := mc.Get("sup")
+			getItm, err := mc.GetKey(c, "sup")
 			So(err, ShouldBeNil)
 			So(len(mci.data.items), ShouldEqual, 1)
 			So(mci.data.casID, ShouldEqual, 1)
@@ -213,5 +226,26 @@ func TestMemcache(t *testing.T) {
 			So(getItm, ShouldResemble, testItem)
 		})
 
+		Convey("When adding an item to an unset namespace", func() {
+			So(info.GetNamespace(c), ShouldEqual, "")
+
+			item := mc.NewItem(c, "foo").SetValue([]byte("heya"))
+			So(mc.Set(c, item), ShouldBeNil)
+
+			Convey("The item can be retrieved from the unset namespace.", func() {
+				got, err := mc.GetKey(c, "foo")
+				So(err, ShouldBeNil)
+				So(got.Value(), ShouldResemble, []byte("heya"))
+			})
+
+			Convey("The item can be retrieved from a set, empty namespace.", func() {
+				// Now test with empty namespace.
+				c = info.MustNamespace(c, "")
+
+				got, err := mc.GetKey(c, "foo")
+				So(err, ShouldBeNil)
+				So(got.Value(), ShouldResemble, []byte("heya"))
+			})
+		})
 	})
 }
