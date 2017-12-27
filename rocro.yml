@@ -1,64 +1,72 @@
 inspecode:
 
   cpd:
+    ignore:
+    - '**/*_test.go'            #  9 issues
     thresholds:
-      num-issues: 999
+      num-issues: 30
 
   errcheck:
+    ignore:
+    - '**/*_test.go'            #  51 issues
     thresholds:
-      num-issues: 999
+      num-issues: 36
 
   gas:
     thresholds:
-      num-issues: 999
+      num-issues: 0
 
   go-test:
     thresholds:
-      num-issues: 999
+      num-issues: 0
 
   go-vet:
     thresholds:
-      num-issues: 999
+      num-issues: 0
 
   gofmt:
     auto-fix: true
     thresholds:
-      num-issues: 999
+      num-issues: 0
 
   goimports:
     auto-fix: true
     thresholds:
-      num-issues: 999
+      num-issues: 0
 
   golint:
     auto-fix: true
     thresholds:
-      num-issues: 999
+      num-issues: 697
+        # 481 | exported {something} should have comment or be unexported
+        # 198 | don't use underscores in Go names
+        # etc.
 
   gosimple:
     auto-fix: true
     thresholds:
-      num-issues: 999
+      num-issues: 2
 
   grep:
     thresholds:
-      num-issues: 999
+      num-issues: 3
 
   ineffassign:
     thresholds:
-      num-issues: 999
+      num-issues: 24
 
   interfacer:
     thresholds:
-      num-issues: 999
+      num-issues: 9
 
   misspell:
     auto-fix: true
     thresholds:
-      num-issues: 999
+      num-issues: 22
 
   unused:
-    #ignore:
-    #- '**/*_test.go'
+    ignore:
+    - '**/*_test.go'            #  82 issues
+    - '**/internal/**/*.go'     # 135 issues
     thresholds:
-      num-issues: 999
+      num-issues: 15
