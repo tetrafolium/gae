@@ -3,6 +3,11 @@ inspecode:
   cpd:
     ignore:
     - '**/*_test.go'            #  9 issues
+    options:
+      --ignore-annotations:
+      --ignore-identifiers:
+      --ignore-literals:
+      --ignore-usings:
     thresholds:
       num-issues: 30
 
@@ -69,4 +74,4 @@ inspecode:
     - '**/*_test.go'            #  82 issues
     - '**/internal/**/*.go'     # 135 issues
     thresholds:
-      num-issues: 15
+      num-issues: 14
