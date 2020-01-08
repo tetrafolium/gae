@@ -17,10 +17,6 @@ inspecode:
     thresholds:
       num-issues: 36
 
-  gas:
-    thresholds:
-      num-issues: 0
-
   go-test:
     thresholds:
       num-issues: 0
@@ -46,6 +42,10 @@ inspecode:
         # 481 | exported {something} should have comment or be unexported
         # 198 | don't use underscores in Go names
         # etc.
+
+  gosec:
+    thresholds:
+      num-issues: 0
 
   gosimple:
     auto-fix: true
