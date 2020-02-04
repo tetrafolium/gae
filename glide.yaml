@@ -1,0 +1,4 @@
+package: github.com/tetrafolium/gae
+import:
+- package: github.com/luci/luci-go
+  version: 2c0096e059ff6cfbfa588d82db8fa522c1f5ac15

@@ -1,0 +1,17 @@
+inspecode:
+  experimental:
+    cache: true
+    incremental: true
+    runtime:
+      go: 1.11
+    ignore:
+      - '**/bindata.go'
+      - 'vendor/'
+
+  thresholds:
+    complexity: 15
+
+  goimports:
+    ignore: '**/testdata'
+    thresholds:
+      num-issues: 0
