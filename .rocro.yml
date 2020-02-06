@@ -1,4 +1,4 @@
-# 10
+# 4
 inspecode:
   experimental:
     cache: true
@@ -11,10 +11,6 @@ inspecode:
 
   thresholds:
     complexity: 15
-
-  golint:
-    thresholds:
-      num-issues: 0
 
   goimports:
     ignore: '**/testdata'
