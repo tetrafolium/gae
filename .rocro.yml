@@ -16,3 +16,22 @@ inspecode:
     ignore: '**/testdata'
     thresholds:
       num-issues: 0
+
+  grep:
+  - options:
+      --extended-regexp:
+      --regexp:
+        - '(BUG|FIXME|HACK|TODO|XXX):'
+        - '　' # (u+3000) ideographic space
+  - ignore:
+      - 'README.md'
+    options:
+      --perl-regexp:
+      --regexp:
+        # Don't import the following standard packages directrly.
+        # Import the alternative packages from universal-go instead.
+        #   "errors"        -> "github.com/tractrix/universal-go/errors"
+        #   "io/ioutil"     -> "github.com/tractrix/universal-go/io/ioutil"
+        #   "os/exec"       -> "github.com/tractrix/universal-go/os/exec"
+        #   "path/filepath" -> "github.com/tractrix/universal-go/path/filepath"
+        - '^(import)?\s+(\w+\s+)?"(errors|io/ioutil|os/exec|path/filepath)"$'
