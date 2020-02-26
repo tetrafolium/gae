@@ -1,4 +1,4 @@
-# 6 test to read cache. 
+# 7 Deploy after clearing cache. 
 inspecode:
   experimental:
     cache: true
@@ -16,6 +16,6 @@ inspecode:
   - auto-fix: true
     ignore: '**/testdata'
     thresholds:
-      num-issues: 0
+      num-issues: 47
   - input: '**/testdata'
     
