@@ -1,4 +1,4 @@
-# 2 test to read cache. 
+# 6 test to read cache. 
 inspecode:
   experimental:
     cache: true
